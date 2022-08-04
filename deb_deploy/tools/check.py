@@ -50,7 +50,7 @@ def check_multiple_archs(list_of_files):
                 output = int(a)
                 break
             except:
-                print("You can type a number, please?\n")
+                print("You can type a number, please? Or you haven't got a keyboard?\n")
         for x in list_of_files:
             s = x.split(".")[0]
             if ":" in s:

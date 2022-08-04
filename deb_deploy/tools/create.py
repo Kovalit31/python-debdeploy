@@ -1,6 +1,83 @@
 import os
 import shutil
 
+def get_data(unsorted_package_name: str):
+    unsorted_pkg_name = unsorted_package_name.rstrip().lstrip()
+    matrix = [-3, -2, -1, 0, 1, 2, 3] # Bigger/BiggerOrEq/NotIs/None/Is/SmallerOrEq/Smaller
+    matrix_return = 0
+    package = unsorted_pkg_name.lstrip().rstrip().lower().split(":")[0]
+    version = " "
+    arch = " "
+    if "=" in unsorted_pkg_name.lower():
+        if ">=" in unsorted_pkg_name.lower():
+            matrix_return = matrix[1]
+            version = unsorted_pkg_name.rstrip().lstrip().lower().split(">=")[1]
+            arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split(">=")[0].split(":")
+            arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+        elif "==" in unsorted_pkg_name.lower():
+            matrix_return = matrix[4]
+            version = unsorted_pkg_name.rstrip().lstrip().lower().split("==")[1]
+            arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split("==")[0].split(":")
+            arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+        elif "<=" in unsorted_pkg_name.lower():
+            matrix_return = matrix[5]
+            version = unsorted_pkg_name.rstrip().lstrip().lower().split("<=")[1]
+            arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split("<=")[0].split(":")
+            arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+        elif "!=" in unsorted_pkg_name.lower():
+            matrix_return = matrix[2]
+            version = unsorted_pkg_name.rstrip().lstrip().lower().split("!=")[1]
+            arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split("!=")[0].split(":")
+            arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+        else:
+            a = unsorted_pkg_name.lower().index("=")
+            length = len(unsorted_pkg_name)
+            write = " "
+            if length == a + 1 and length == 1:
+                write = unsorted_pkg_name[a]
+            elif length == a + 1 and not length == 1:
+                s = 0
+                p = unsorted_pkg_name.lower().split("=")
+                if len(p) >= 3:
+                    s = 3
+                else:
+                    s = len(p)
+                write = unsorted_pkg_name[s:-1]
+            elif not length == a + 1 and not length == 1:
+                p = length - a - 1
+                e = 0
+                s = 0
+                if p >= 3:
+                    e = 3
+                else:
+                    e = p
+                l = unsorted_pkg_name.lower().split("=")
+                if len(l) >= 3:
+                    s = 3
+                else:
+                    s = len(l)
+                write = unsorted_pkg_name[s:e]
+            else:
+                write = f"<error in string '{unsorted_pkg_name}'>"
+            raise Exception(f"Error in char '=' here: '{write}' ")
+    elif ">" in unsorted_pkg_name:
+        matrix_return = matrix[0]
+        version = unsorted_pkg_name.rstrip().lstrip().lower().split(">")[1]
+        arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split(">")[0].split(":")
+        arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+    elif "<" in unsorted_pkg_name:
+        matrix_return = matrix[6]
+        version = unsorted_pkg_name.rstrip().lstrip().lower().split("<")[1]
+        arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split("<")[0].split(":")
+        arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+    else:
+        matrix_return = matrix[3]
+        version = None
+        arch_temp = unsorted_pkg_name.rstrip().lstrip().lower().split(":")
+        arch = " " if not len(arch_temp) > 1 else arch_temp[1]
+    return package, version, matrix_return, arch
+
+
 def create_deb_directory(package, base_folder=os.path.join("/", "tmp")):
     '''
     Creating base folder of any deb package build tree and returns:
@@ -54,7 +131,7 @@ def copy_files(files, control_folder, base_folder):
                             try:
                                 shutil.copyfile(y, os.path.join(base_folder, y[1:]))
                             except:
-                                print("\n[WARNING] Distribution is not full. It may caaused by system damage.")
+                                print("\n[WARNING] Distribution is not full. It may caused by system damage.")
                 f.close()
             os.remove(full_output_path)
 
@@ -71,7 +148,7 @@ def create_control(package: str, control_folder: str, arch: str):
         for m in lines:
             x = m.lower()
             if not start:
-                print(x)
+                # print(x)
                 if found:
                     if x.startswith("\n") and x.endswith("\n"):
                         break
@@ -86,14 +163,14 @@ def create_control(package: str, control_folder: str, arch: str):
                         control_lines.append(m)
             else:
                 if x == "package: {0}\n".format(package.lower()):
-                    print("found")
+                    # print("found")
                     control_lines = []
                     found = 1
                     start = 0
                     control_lines.append("Package: {0}\n".format(package))
                     continue
-        print(dependies)
-        print(control_lines)
+        # print(dependies)
+        # print(control_lines)
         f.close()
     if len(control_lines) == 0:
         raise FileNotFoundError("\n[@] Package not found in status")
