@@ -33,7 +33,7 @@ def main(args):
         crt.copy_files(files, control_folder, base_folder)
         dependies = crt.create_control(package, control_folder, arch)
         crt.build_deb(package, base_folder, output_folder)
-        
+        print(lx, x, builded, depends, dependies)
         for x in range(len(dependies)):
             depends.add(dependies[x])
         builded.add(x)
