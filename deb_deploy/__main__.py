@@ -11,7 +11,7 @@ def main(args):
         depends.add(x)
 
     while len(depends) > 0:
-        x = depends[0]
+        x = list(set).sort()[0]
         if x in builded:
             for x in range(len(dependies)):
                 depends.add(dependies[x])
