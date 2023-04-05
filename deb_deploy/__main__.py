@@ -11,11 +11,10 @@ def main(args):
         depends.add(x)
 
     while len(depends) > 0:
-        x = list(depends).sort()[0]
+        lx = list(depends)
+        lx.sort()
+        x = lx[0]
         if x in builded:
-            for x in range(len(dependies)):
-                depends.add(dependies[x])
-            builded.add(x)
             depends.remove(x)
             continue
         version_have = False
