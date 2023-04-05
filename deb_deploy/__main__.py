@@ -37,7 +37,7 @@ def main(args):
         for x in range(len(dependies)):
             depends.add(dependies[x])
         builded.add(x)
-        depends.remove(x)
+        depends.discard(x)
 
 
 if __name__ == "__main__":
