@@ -34,10 +34,10 @@ def main(args):
         dependies = crt.create_control(package, control_folder, arch)
         crt.build_deb(package, base_folder, output_folder)
         print(lx, x, builded, depends, dependies)
-        for x in range(len(dependies)):
-            depends.add(dependies[x])
+        for y in range(len(dependies)):
+            depends.add(dependies[y])
         builded.add(x)
-        depends.discard(x)
+        depends.remove(x)
 
 
 if __name__ == "__main__":

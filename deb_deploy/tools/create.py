@@ -185,4 +185,4 @@ def build_deb(package, base_folder, debs_folder):
     '''
     s = os.system(f"dpkg-deb -b -Sextreme {base_folder} {debs_folder}/{package}.deb")
     if s != 0:
-        raise Exception("\n[@]You haven't installed 'dpkg-dev' package. Install it with 'apt'")
+        raise Exception("\n[@] You haven't installed 'dpkg-dev' package. Install it with 'apt'")
