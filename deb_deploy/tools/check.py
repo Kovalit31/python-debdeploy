@@ -5,7 +5,7 @@ def check_and_return_info_files(package):
     '''
     Returns configuration files, what is in "info" directory of dpkg
     '''
-    archs = ["amd64", "i386", "arm64", "powerpc"]
+    archs = ["amd64", "i386", "arm64", "powerpc", "mipsel", "armhf"]
     global paths
     info_files_path = paths["info"]
     if not os.path.exists(info_files_path):

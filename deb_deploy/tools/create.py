@@ -177,6 +177,7 @@ def create_control(package: str, control_folder: str, arch: str):
     with open(os.path.join(control_folder, "control"), "w") as f:
         f.write("".join(control_lines))
         f.close()
+    return dependies
 
 def build_deb(package, base_folder, debs_folder):
     '''

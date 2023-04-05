@@ -3,7 +3,15 @@ import deb_deploy.tools.create as crt
 import deb_deploy.tools.check as chk
 
 def main(args):
+    builded = set()
+    depends = set()
     for x in args[1:]:
+        if x.startwith("-"):
+            continue
+        depends.add(x)
+
+    while len(depends) > 1:
+        x = depends[0]
         version_have = False
         package, version, returned, arch = crt.get_data(x)
         if version == None:
@@ -18,8 +26,11 @@ def main(args):
         base_folder, control_folder = crt.create_deb_directory(package)
         output_folder = crt.create_output_dir()
         crt.copy_files(files, control_folder, base_folder)
-        crt.create_control(package, control_folder, arch)
+        dependies = crt.create_control(package, control_folder, arch)
         crt.build_deb(package, base_folder, output_folder)
+        for x in range(len(dependies)):
+            depends.add(dependies[x])
+        depends.remove(x)
 
 
 if __name__ == "__main__":
