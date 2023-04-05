@@ -6,7 +6,7 @@ def main(args):
     builded = set()
     depends = set()
     for x in args[1:]:
-        if x.startwith("-"):
+        if x.startswith("-"):
             continue
         depends.add(x)
 
