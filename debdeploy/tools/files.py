@@ -49,11 +49,6 @@ def copy_files_to_target(files: list[str], target: str) -> None:
         )
     metadata = os.path.join(target, "DEBIAN")
     package_list = os.path.join(metadata, "list")
-    try:
-        os.makedirs(metadata)
-    except OSError:
-        shutil.rmtree(metadata)
-        os.makedirs(metadata)
     for _x in files:
         shutil.copy2(os.path.join(definitions.DPKG_CACHE_INFO_FILES_ROOT, _x),
                          os.path.join(metadata, _x.split(".")[1]),
@@ -64,6 +59,7 @@ def copy_files_to_target(files: list[str], target: str) -> None:
     for file in files:
         if file.strip() == "/.":
             continue
+        destination = os.path.join(target, file.strip()[1:])
         if not os.path.exists(file.strip()):
             tools.printf(
                 "There is no file, what defined in list. May be it is broken system!",
@@ -74,14 +70,25 @@ def copy_files_to_target(files: list[str], target: str) -> None:
             warn = True
             continue
         if os.path.isdir(file.strip()):
-            os.makedirs(os.path.join(target, file.strip()[1:]), exist_ok=True)
-            shutil.copystat(file.strip(), os.path.join(target, file.strip()[1:]))
+            tools.force_makedirs(destination)
+            shutil.copystat(file.strip(), destination)
             continue
-        shutil.copy2(file.strip(), os.path.join(target, file.strip()[1:]))
+        shutil.copy2(file.strip(), destination)
     os.remove(package_list)
     to_chmod = []
     for _mfile in os.listdir(metadata):
         if re.match(definitions.SCRIPTS, _mfile):
             to_chmod.append(os.path.join(metadata, _mfile))
     (os.chmod(x, 0o0755) for x in to_chmod)
-    os.chmod(metadata, 0o0755)
+
+def create_dirs(package: control.Package, cache_dir: str, dest_dir: str) -> None:
+    '''
+    Creates dirs for build
+    '''
+    package_workdir = os.path.join(cache_dir, package.package)
+    package_controldir = os.path.join(package_workdir, "DEBIAN")
+    # Create dirs
+    tools.force_makedirs(cache_dir)
+    tools.force_makedirs(dest_dir)
+    tools.force_makedirs(package_workdir)
+    tools.force_makedirs(package_controldir, mode=0o0755)

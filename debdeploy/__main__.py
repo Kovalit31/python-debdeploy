@@ -77,12 +77,13 @@ def main(args: argparse.Namespace):
         # _package = control.Package(
         # package.package, version=curcontrol.version, arch=curcontrol.arch
         # )
-        _files = files.get_files(package)
-        files.copy_files_to_target(_files, os.path.join(args.cache, package.package))
-        _cfile = os.path.join(args.cache, package.package, "DEBIAN", "control")
-        with open(_cfile, 'w', encoding="utf-8") as _f:
+        package_files = files.get_files(package)
+        files.create_dirs(package, args.cache, args.destination)
+        files.copy_files_to_target(package_files, os.path.join(args.cache, package.package))
+        control_file = os.path.join(args.cache, package.package, "DEBIAN", "control")
+        with open(control_file, 'w', encoding="utf-8") as _f:
             _f.write("".join(_control.original))
-        os.chmod(_cfile, 0o0644)
+        os.chmod(control_file, 0o0644)
         build.build(package, args.cache, args.destination)
 
 if __name__ == "__main__":

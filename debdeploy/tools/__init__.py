@@ -28,3 +28,19 @@ def printf(*message, level="i", exception=Exception, check=False):
     if level == "f":
         # pylint: disable=[broad-exception-raised]
         raise exception(out_msg)
+
+def force_makedirs(path: str, mode=None) -> None:
+    '''
+    Forces making of directory @string path
+    '''
+    if os.path.isfile(path):
+        printf(f"Can't create dircetory, if it is file: '{path}'!", level='e')
+        return
+    if not os.path.exists(path):
+        try:
+            os.makedirs(path)
+        except OSError:
+            pass
+    if mode is None:
+        return
+    os.chmod(path, mode)

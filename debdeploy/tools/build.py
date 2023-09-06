@@ -12,8 +12,6 @@ def build(package: control.Package, cache_dir: str, dest_dir: str) -> None:
     '''
     if os.path.exists(dest_dir) and not os.path.isdir(dest_dir):
         tools.printf(f"Directory is not a directory: '{dest_dir}'!")
-    if not os.path.exists(dest_dir):
-        os.makedirs(dest_dir)
     tools.printf(f"Building package {package.package}:{package.arch} ({package.version})")
     _code = execute(
         f"sudo dpkg-deb -Sextreme -b {os.path.join(cache_dir, package.package)} \
