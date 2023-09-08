@@ -7,34 +7,40 @@ import shutil
 from debdeploy.tools import definitions, control
 from debdeploy import tools
 
-def get_files(package: control.Package, check_arch=False) -> list[str]:
+
+def get_files(package: control.Package) -> list[str]:
     '''
     Get files from dpkg cache, what stores info about package
     '''
     # pylint: disable=[expression-not-assigned]
     files = os.listdir(definitions.DPKG_CACHE_INFO_FILES_ROOT)
-    package_files = []
+    package_files = {}
+    archs = []
     for _x in files:
-        if (re.match(
-                    definitions.PACKAGE_INFO_FILE_REGEX.format(
-                        package=package.package
-                        ),
-                    _x
-                ) and not check_arch) or re.match(
-                    definitions.PACKAGE_INFO_FILE_ARCH_REGEX.format(
-                        package=package.package,
-                        arch=package.arch
-                        ),
-                    _x
-                ):
-            package_files.append(_x)
+        if re.match(definitions.PACKAGE_INFO_FILE_REGEX.format(package=package.name),
+                    _x):
+            if ":" in _x:
+                arch = _x.split(".")[0].split(":", 1)[1]
+            else:
+                arch = "default"
+            if arch in archs:
+                package_files[arch].append(_x)
+            else:
+                package_files[arch] = [_x]
+                archs.append(arch)
     if len(package_files) == 0:
         tools.printf(
             "Info files for this package can't be found!",
             level='f',
             exception=definitions.PackageNotFoundError
         )
-    return package_files
+    if len(package_files) > 1:
+        tools.printf(
+            "Two arches have not supported yet!",
+            level='f',
+            exception=NotImplementedError
+        )
+    return package_files[archs[0]]
 
 def copy_files_to_target(files: list[str], target: str) -> None:
     '''
@@ -85,7 +91,7 @@ def create_dirs(package: control.Package, cache_dir: str, dest_dir: str) -> None
     '''
     Creates dirs for build
     '''
-    package_workdir = os.path.join(cache_dir, package.package)
+    package_workdir = os.path.join(cache_dir, package.name)
     package_controldir = os.path.join(package_workdir, "DEBIAN")
     # Create dirs
     tools.force_makedirs(cache_dir)

@@ -3,8 +3,10 @@ Contains a control file parser
 '''
 import copy
 import re
+from debdeploy.tools.version import LooseVersion
 
 from debdeploy.tools import definitions
+from debdeploy import tools
 
 # pylint: disable=[too-few-public-methods]
 class Package:
@@ -12,10 +14,59 @@ class Package:
     Class, what defines package with it name, version, and, if defined, arch.
     Useful for defining package in any depend.
     '''
-    def __init__(self, package, version=None, arch=None) -> None:
-        self.package = package
-        self.version = version
+    def __init__(self, name: str, version=None, arch=None, modifier=None) -> None:
+        self.name = name
+        self.version = LooseVersion(vstring=version)
         self.arch = arch
+        self.modifier = modifier
+
+    def check_version(self, package, no_panic_return: bool = False) -> None:
+        '''
+        Check if package can be dependency.
+        This package contains modifier, given package contains version
+        If in given package have modifier, it will ignored
+        If this package haven't got modifier, raise exception NoPackageModifierError
+        '''
+        if self.modifier is None:
+            tools.printf(
+                "This package doesn't contain modyfier or version, \
+Can't check package compatibility!",
+                level='f',
+                exception=definitions.NoPackageModifierError,
+                check=no_panic_return
+                )
+            return
+        if not isinstance(package, Package):
+            tools.printf(
+                f"Can't use '{package}' as Package object!",
+                level="f",
+                exception=TypeError,
+                check=no_panic_return
+            )
+            return
+        if package.version is None:
+            tools.printf(
+                f"Can't determine version of '{package}'!",
+                level='f',
+                exception=ValueError,
+                check=no_panic_return
+            )
+            return
+        if package.name != self.name:
+            return False
+        if (package.arch is not None and self.arch is not None) and (package.arch != self.arch):
+            return False
+        return package.version == self.version if self.modifier == "=" \
+            else package.version < self.version if self.modifier == "<<" \
+                else package.version > self.version if self.modifier == ">>" \
+                    else package.version >= self.version if self.modifier == ">=" \
+                        else package.version <= self.version if self.modifier == "<=" \
+                            else (tools.printf(
+                                "Can't determine modifier!",
+                                level='f',
+                                exception=ValueError,
+                                check=no_panic_return
+                            ) or False)
 
 class Control:
     '''
@@ -44,6 +95,7 @@ class Control:
         # Should never broke, because it is default package sections
         self.version = self.sections["version"]
         self.arch = self.sections["architecture"]
+        self.package = self.sections["package"]
 
     def pre_depends(self) -> list[Package]:
         '''
@@ -78,7 +130,7 @@ class Control:
                 self.recommends_list = []
         return self.recommends_list
 
-def get_controls(package: Package) -> list[Control]:
+def get_controls(package_name: str) -> list[Control]:
     '''
     Finds control for package in status dpkg file
     '''
@@ -90,7 +142,7 @@ def get_controls(package: Package) -> list[Control]:
     _controls = []
     # pylint: disable=[invalid-name]
     for x in status:
-        if x.strip().lower() == f"package: {package.package}":
+        if x.strip().lower() == f"package: {package_name}":
             found = True
         if x.strip().lower() == "" and found:
             found = False
@@ -111,9 +163,12 @@ def parse_packages(line: str) -> list[Package, list[Package]]:
         Generates packages from package:arch (version)
         '''
         package, *version = all_data.split(" ", 1)
-        version = version[0].strip("()") if len(version) > 1 else None
+        modifier, *version = version[0].strip("()").split(" ", 1) if len(version) > 0 else (None,)
         package, *arch = package.split(":", 1)
-        return Package(package, version=version, arch=arch if len(arch) > 1 else None)
+        return Package(package,
+                       version=version[0] if len(version) > 0 else None,
+                       arch=arch[0] if len(arch) > 0 else None,
+                       modifier=modifier)
     raw = line.split(",")
     out = []
     for package in raw:

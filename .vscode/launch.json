@@ -1,0 +1,15 @@
+{
+    // Use IntelliCode for autocompletion
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug: 'python-debdeploy' (build 'apt')",
+            "type": "python",
+            "request": "launch",
+            "module": "debdeploy",
+            "justMyCode": true,
+            "args": ["apt", "--no-root-perms"] // Change, if need
+            
+        }
+    ]
+}

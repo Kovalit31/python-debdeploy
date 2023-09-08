@@ -3,7 +3,7 @@ Tools module. Contains tools for extracting and work with package files
 '''
 import os
 
-from . import control, definitions, files, build
+from . import control, definitions, files, build, version
 
 def check_sudo() -> bool:
     '''
@@ -20,7 +20,7 @@ def printf(*message, level="i", exception=Exception, check=False):
         return
     level = level[0].lower()
     symbol = "#" if level == 'd' else "~" if level == 'v' else '*' if level == "i" else "!" \
-        if level == "w" else "@" if level == "e" else "&" if not 'c' else '`'
+        if level == "w" else "@" if level == "e" else "&" if level != 'c' else '`'
     out_msg = f"[{symbol}] {''.join(message)}"
     print(
         out_msg

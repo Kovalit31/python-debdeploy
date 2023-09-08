@@ -1,19 +1,25 @@
-# deb_deploy
+# python-debdeploy
 
 Deb package builder and deployer from already installed packeges on Python3 for Debian-based GNU/Linux OS
 
 ## Requirments
 
-No requirments at this moment, your requirment is only sudo and python3, what can installed by 'apt install python3 sudo'
+'apt install python3 sudo'
+
+## Installing
+
+'pip3 install https://github.com/Kovalit31/python-debdeploy/archive/refs/heads/main.zip' (replace main with required branch)
 
 ## Usage
 
 To build package, just start
-'cd /path/to/deb_deploy/ && sudo python3 -m deb_deploy "package_name"'
+'debdeploy <package>'
+For help, run
+'debdeploy --help'
 
 ## Defaults
 
-Default path, where is saving debs and cache is '/tmp/DEBS' and '/tmp' equalent
+Default path, where is saving debs and cache is '/tmp/debdeploy-<random characters>' and '/tmp/debdeploy-<random characters>-cache' equalent
 
 ## NOTE
 

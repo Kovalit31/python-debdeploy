@@ -1,0 +1,37 @@
+[project]
+name = "debdeploy"
+version = "1.1.0"
+requires-python = ">=3.5"
+description = "Deb package builder from dpkg cache"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    { name = "Kovalit31", email = "nonecone20@gmail.com" }
+]
+keywords = [
+    "debian",
+    "debian-packages",
+    "administration", 
+    "linux",
+    "package-manager",
+    "offline",
+    "system",
+    "deployment"
+]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.5",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Software Distribution",
+    "Topic :: Utilities"
+]
+dependencies = []
+
+[project.urls]
+repository = "https://github.com/Kovalit31/python-debdeploy"
+
+[project.scripts]
+debdeploy = "debdeploy:main"
