@@ -37,7 +37,7 @@ def get_files(package: control.Package, default_arch=None) -> list[str]:
                 archs.append(arch)
     if len(package_files) == 0:
         tools.printf(
-            "Info files for this package can't be found!",
+            f"Info files for '{package.name}' package can't be found!",
             level='f',
             exception=definitions.PackageNotFoundError
         )

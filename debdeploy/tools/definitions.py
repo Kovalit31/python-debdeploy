@@ -4,12 +4,15 @@ Definitions of module
 
 import os
 
+DEBDEPLOY_CACHE_WORKDIR = "/tmp/debdeploy-{uuid}-cache"
+DEBDEPLOY_WORKDIR = "/tmp/debdeploy-{uuid}"
+
 DPKG_CACHE_LIB_ROOT = os.path.join("/", "var", "lib", "dpkg")
 DPKG_CACHE_STATUS = os.path.join(DPKG_CACHE_LIB_ROOT, "status")
 DPKG_CACHE_INFO_FILES_ROOT = os.path.join(DPKG_CACHE_LIB_ROOT, "info")
 
 CONTROL_SECTION_REGEX = "^[^\n]+:( [^\n]+)?$"
-PACKAGE_INFO_FILE_REGEX = "^{package}(:[a-z]+)?\\.[a-z]+$"
+PACKAGE_INFO_FILE_REGEX = "^{package}(:[a-z0-9]+)?\\.[a-z]+$"
 
 SCRIPTS = "^(post|pre)(rm|inst)$"
 

@@ -23,13 +23,14 @@ class Package:
     def __eq__(self, __value: object) -> bool:
         if not isinstance(__value, Package):
             return False
-        isversion = __value.version == self.version
-        if __value.version is None:
-            # Difficult question. I think it is True
-            isversion = True
-        isarch = __value.arch == self.arch
-        if __value.arch is None:
-            isarch = True
+        isversion = True
+        if __value.version.version is not None and \
+            self.version.version is not None:
+            isversion = __value.version == self.version
+        isarch = True
+        if __value.arch is not None and \
+            self.arch is not None:
+            isarch = __value.arch == self.arch
         # Name can't be None
         return __value.name == self.name and \
                 isarch and \
@@ -42,7 +43,8 @@ class Package:
         If in given package have modifier, it will ignored
         If this package haven't got modifier, raise exception NoPackageModifierError
         '''
-        if self.modifier is None:
+        if self.modifier is None: # We don't need check version
+                                  # It will also be None
             tools.printf(
                 "This package doesn't contain modyfier or version, \
 Can't check package compatibility!",
@@ -50,7 +52,7 @@ Can't check package compatibility!",
                 exception=definitions.NoPackageModifierError,
                 check=no_panic_return
                 )
-            return
+            return None
         if not isinstance(package, Package):
             tools.printf(
                 f"Can't use '{package}' as Package object!",
@@ -58,15 +60,15 @@ Can't check package compatibility!",
                 exception=TypeError,
                 check=no_panic_return
             )
-            return
-        if package.version is None:
+            return None
+        if package.version.version is None:
             tools.printf(
                 f"Can't determine version of '{package}'!",
                 level='f',
                 exception=ValueError,
                 check=no_panic_return
             )
-            return
+            return None
         if package.name != self.name:
             return False
         if (package.arch is not None and self.arch is not None) and (package.arch != self.arch):
@@ -76,12 +78,12 @@ Can't check package compatibility!",
                 else package.version > self.version if self.modifier == ">>" \
                     else package.version >= self.version if self.modifier == ">=" \
                         else package.version <= self.version if self.modifier == "<=" \
-                            else (tools.printf(
+                            else ( tools.printf(
                                 "Can't determine modifier!",
                                 level='f',
                                 exception=ValueError,
                                 check=no_panic_return
-                            ) or False)
+                            ) or False )
 
 class Control:
     '''
@@ -145,7 +147,7 @@ class Control:
                 self.recommends_list = []
         return self.recommends_list
 
-    def debug__(self) -> str:
+    def __debug_info__(self) -> str:
         '''
         Returns str with debug data
         '''
