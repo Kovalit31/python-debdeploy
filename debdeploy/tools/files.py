@@ -8,7 +8,7 @@ from debdeploy.tools import definitions, control
 from debdeploy import tools
 
 
-def get_files(package: control.Package) -> list[str]:
+def get_files(package: control.Package, default_arch=None) -> list[str]:
     '''
     Get files from dpkg cache, what stores info about package
     '''
@@ -22,7 +22,14 @@ def get_files(package: control.Package) -> list[str]:
             if ":" in _x:
                 arch = _x.split(".")[0].split(":", 1)[1]
             else:
-                arch = "default"
+                arch = tools.get_arch() # There is two ways:
+                                        # If there is multiarch packgae (all targets)
+                                        # It will added to arch specific and will be skiped
+                                        # If there is a arch-specific package
+                                        # It, by default, will be placed to arch and next
+                                        # arch-specific will be with arch
+                                        # It is because filesystems can't contain two files with
+                                        # same names and path
             if arch in archs:
                 package_files[arch].append(_x)
             else:
@@ -35,11 +42,13 @@ def get_files(package: control.Package) -> list[str]:
             exception=definitions.PackageNotFoundError
         )
     if len(package_files) > 1:
-        tools.printf(
-            "Two arches have not supported yet!",
-            level='f',
-            exception=NotImplementedError
-        )
+        if default_arch is None or default_arch not in package_files:
+            tools.printf(
+                f"Can't guess default arch to build from '{archs}'!",
+                level='f',
+                exception=NotImplementedError
+            )
+        return package_files[default_arch] # It may be arch speccific or multiarch... Umm...
     return package_files[archs[0]]
 
 def copy_files_to_target(files: list[str], target: str) -> None:

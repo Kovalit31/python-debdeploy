@@ -20,6 +20,21 @@ class Package:
         self.arch = arch
         self.modifier = modifier
 
+    def __eq__(self, __value: object) -> bool:
+        if not isinstance(__value, Package):
+            return False
+        isversion = __value.version == self.version
+        if __value.version is None:
+            # Difficult question. I think it is True
+            isversion = True
+        isarch = __value.arch == self.arch
+        if __value.arch is None:
+            isarch = True
+        # Name can't be None
+        return __value.name == self.name and \
+                isarch and \
+                isversion
+
     def check_version(self, package, no_panic_return: bool = False) -> None:
         '''
         Check if package can be dependency.
@@ -130,6 +145,12 @@ class Control:
                 self.recommends_list = []
         return self.recommends_list
 
+    def debug__(self) -> str:
+        '''
+        Returns str with debug data
+        '''
+        return self.original
+
 def get_controls(package_name: str) -> list[Control]:
     '''
     Finds control for package in status dpkg file
@@ -150,8 +171,6 @@ def get_controls(package_name: str) -> list[Control]:
             _control = []
         if found:
             _control.append(x)
-    if len(_controls) == 0:
-        return None
     return [Control(x) for x in _controls]
 
 def parse_packages(line: str) -> list[Package, list[Package]]:

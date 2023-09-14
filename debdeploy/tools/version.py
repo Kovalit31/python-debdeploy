@@ -270,7 +270,7 @@ class LooseVersion (Version):
     """
 
     component_re = re.compile(r'(\d+ | [a-z]+ | \.)', re.VERBOSE)
-
+    version = None
     def parse(self, vstring: str) -> None:
         # I've given up on thinking I can reconstruct the version string
         # from the parsed tuple -- so I just store the string here for

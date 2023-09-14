@@ -2,6 +2,8 @@
 Tools module. Contains tools for extracting and work with package files
 '''
 import os
+import platform
+import re
 
 from . import control, definitions, files, build, version
 
@@ -44,3 +46,15 @@ def force_makedirs(path: str, mode=None) -> None:
     if mode is None:
         return
     os.chmod(path, mode)
+
+def get_arch() -> str:
+    '''
+    Gets arch of host machine
+    '''
+    # pylint: disable=[implicit-str-concat]
+    _a_re = ["i.86/i386", "x86_64/amd64", "s390x/s390x", "aarch64.*/arm64"] # Predefined
+    arch = platform.machine()
+    for _x in _a_re:
+        pattern, repl = _x.split("/")
+        arch = re.sub(pattern, repl, arch)
+    return arch

@@ -8,8 +8,17 @@
             "request": "launch",
             "module": "debdeploy",
             "justMyCode": true,
-            "args": ["apt", "--no-root-perms"] // Change, if need
+            "args": ["apt", "--no-superuser"] // Change, if need
+            
+        },
+        {
+            "name": "Debug: 'python-debdeploy' (build 'apt' with deps)",
+            "type": "python",
+            "request": "launch",
+            "module": "debdeploy",
+            "justMyCode": true,
+            "args": ["apt", "--no-superuser", "--dependencies"] // Change, if need
             
         }
-    ]
+    ],
 }

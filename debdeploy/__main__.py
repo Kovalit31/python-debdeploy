@@ -26,7 +26,6 @@ def parse() -> argparse.Namespace:
         default=False
         )
     parser.add_argument(
-        "-v",
         "--verbose",
         action="store_true",
         help="Be verbose",
@@ -51,7 +50,7 @@ def parse() -> argparse.Namespace:
         default=f"/tmp/debdeploy-{uuid}-cache"
     )
     parser.add_argument(
-        "--no-root-perms",
+        "--no-superuser",
         action="store_true",
         help="Run without root permission (for overriding). \n\
     Caution: it can be broke resulting package!",
@@ -64,27 +63,78 @@ def parse() -> argparse.Namespace:
         default=False,
         action="store_true"
     )
+    parser.add_argument(
+        "--arch",
+        help="Default arch",
+        default=tools.get_arch()
+    )
+    parser.add_argument(
+        "--dependencies",
+        help="Build with dependencies",
+        action="store_true",
+        default=False
+    )
     return parser.parse_args()
 
 def main(args: argparse.Namespace):
     '''
     Main function of programm
     '''
-    if not tools.check_sudo() and not args.no_root_perms:
+    if not tools.check_sudo() and not args.no_superuser:
         tools.printf("Programm can't be run without sudo.", level='f', exception=PermissionError)
     packages = control.parse_packages(", ".join(args.packages))
-    for package in packages:
+    builded = []
+    ignore_count = 0
+    while len(packages) > 0:
+        package = packages[0]
+        if isinstance(package, list):
+            # Oh no, there is some pudding
+            ignore_count = len(package) - 1
+            packages = package + package[1:]
+            continue
         _controls = control.get_controls(package.name)
         if len(_controls) > 1:
+            for _control in _controls:
+                if _control.arch == tools.get_arch() or _control.arch == "all":
+                    break
+            else:
+                tools.printf(
+                    f"Can't guess control file from '{_controls}'!",
+                    level='f',
+                    exception=NotImplementedError,
+                    check=(ignore_count > 0)
+                )
+                ignore_count -= 1
+                packages.pop(0)
+                continue
+        if len(_controls) == 0:
             tools.printf(
-                "Parsing package with two controls (arches) not yet implemented!",
+                f"I don't know, what you want to build instead '{package.name}'...",
                 level='f',
-                exception=NotImplementedError
+                exception=definitions.PackageNotFoundError,
+                check=(ignore_count > 0)
             )
+            ignore_count -= 1
+            packages.pop()
+            continue
         _control = _controls[0]
+        if args.debug:
+            tools.printf(
+                f"{_control.debug__()}",
+                level='d'
+            )
         _package = control.parse_packages(f"{_control.package}\
 {f':{_control.arch}' if _control.arch is not None else ''}\
 {f' (= {_control.version})' if _control.version is not None else ''}")[0]
+        for _builded_package in builded:
+            if package == _builded_package:
+                packages.pop(0)
+                if ignore_count > 0:
+                    # Clear ignore_count packages
+                    for _ in range(ignore_count):
+                        packages.pop(0)
+                ignore_count = 0
+                continue
         correct = package.check_version(_package, no_panic_return=True)
         if correct is not None and not correct:
             tools.printf(
@@ -92,8 +142,11 @@ def main(args: argparse.Namespace):
 not sucessful previous installation of package!",
                 level='f',
                 exception=definitions.PackageNotFoundError,
-                check=args.force
+                check=(args.force or ignore_count > 0)
                 )
+            if ignore_count > 0:
+                ignore_count -= 1
+            packages.pop(0)
             continue
         package_files = files.get_files(_package)
         files.create_dirs(_package, args.cache, args.destination)
@@ -103,6 +156,17 @@ not sucessful previous installation of package!",
             _f.write("".join(_control.original))
         os.chmod(control_file, 0o0644)
         build.build(_package, args.cache, args.destination)
+        if ignore_count > 0:
+            # It is successful build, if build not panic
+            for _ in range(ignore_count):
+                # We don't use full count of packages, because code
+                # below delete one more item from packages
+                packages.pop(0)
+            ignore_count = 0
+        packages.pop(0)
+        if args.dependencies:
+            packages.extend(_control.depends() + _control.pre_depends())
+        builded.append(package)
 
 if __name__ == "__main__":
     main(parse())
