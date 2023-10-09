@@ -13,10 +13,34 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
-Main executable of debdeploy package
+Test debdeploy.tools
 '''
 
-from . import main, parse
+import os
 
-if __name__ == "__main__":
-    main(parse())
+from debdeploy import tools
+
+def test_check_sudo() -> None:
+    '''
+    Tests check_sudo
+    '''
+    try:
+        tools.check_sudo()
+        assert os.getuid() == 0
+    except PermissionError:
+        assert os.getuid() != 0
+
+def test_gen_uuid() -> None:
+    '''
+    Tests gen_uuid
+    '''
+    assert tools.gen_uuid() != tools.gen_uuid()
+    assert len(tools.gen_uuid()) == 20
+    assert len(tools.gen_uuid(30)) == 30
+
+def test_normalize_re() -> None:
+    '''
+    Tests normalize_re
+    '''
+    assert tools.normalize_re(r"\d") == r"\d"
+    assert tools.normalize_re(r"\\d+") == r"\\d\+"

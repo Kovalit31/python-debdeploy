@@ -1,0 +1,6 @@
+Package: test-debdeploy
+Architecture: all
+Version: 0.0.1
+Homepage: https://github.com/Kovalit31/python-debdeploy
+Maintainer: Kovalit31 <nonecone20@gmail.com>
+Description: python-debdeploy test package for test_build.py

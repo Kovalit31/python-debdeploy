@@ -1,9 +1,25 @@
 '''
+
+    debdeploy - Build dpkg package and it dependencies from dpkg cache
+    Copyright (C) 2023 Kovalit31
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
 Contains a control file parser
+Package(name: str, version: str, arch: str, modifier: str) - Creates package instance
+Control(control: list[str]) - Creates control instance
 '''
 import copy
 import re
-from debdeploy.tools.version import LooseVersion
+from debdeploy.tools.version import version_compare
 
 from debdeploy.tools import definitions
 from debdeploy import tools
@@ -13,19 +29,28 @@ class Package:
     '''
     Class, what defines package with it name, version, and, if defined, arch.
     Useful for defining package in any depend.
+    __str__ return a string representation of package as described in dpkg documentation
+    (such as "package:arch (modifier version )")
+    __eq__ checks that package attributes name, arch and version are equal to each other
+    check_version checks if package can be dependency.
     '''
     def __init__(self, name: str, version=None, arch=None, modifier=None) -> None:
         self.name = name
-        self.version = LooseVersion(vstring=version)
+        self.version = version.strip() if version is not None else None
         self.arch = arch
         self.modifier = modifier
+
+    def __str__(self):
+        return f"{self.name}\
+{':'+self.arch if self.arch is not None else ''}\
+{f' ({self.modifier} '+self.version+' )' if self.version is not None else ''}"
 
     def __eq__(self, __value: object) -> bool:
         if not isinstance(__value, Package):
             return False
         isversion = True
-        if __value.version.version is not None and \
-            self.version.version is not None:
+        if __value.version is not None and \
+            self.version is not None:
             isversion = __value.version == self.version
         isarch = True
         if __value.arch is not None and \
@@ -52,7 +77,8 @@ Can't check package compatibility!",
                 exception=definitions.NoPackageModifierError,
                 check=no_panic_return
                 )
-            return None
+            return True # May be it's true, because it
+                        # may not be original version, but package is required
         if not isinstance(package, Package):
             tools.printf(
                 f"Can't use '{package}' as Package object!",
@@ -61,7 +87,7 @@ Can't check package compatibility!",
                 check=no_panic_return
             )
             return None
-        if package.version.version is None:
+        if package.version is None:
             tools.printf(
                 f"Can't determine version of '{package}'!",
                 level='f',
@@ -73,11 +99,12 @@ Can't check package compatibility!",
             return False
         if (package.arch is not None and self.arch is not None) and (package.arch != self.arch):
             return False
-        return package.version == self.version if self.modifier == "=" \
-            else package.version < self.version if self.modifier == "<<" \
-                else package.version > self.version if self.modifier == ">>" \
-                    else package.version >= self.version if self.modifier == ">=" \
-                        else package.version <= self.version if self.modifier == "<=" \
+        compared = version_compare(package.version, self.version)
+        return compared == 0 if self.modifier == "=" \
+            else compared < 0 if self.modifier == "<<" \
+                else compared > 0 if self.modifier == ">>" \
+                    else compared >= 0 if self.modifier == ">=" \
+                        else compared <= 0 if self.modifier == "<=" \
                             else ( tools.printf(
                                 "Can't determine modifier!",
                                 level='f',
@@ -88,64 +115,53 @@ Can't check package compatibility!",
 class Control:
     '''
     Main control file parser
+    __eq__ checks that described in control file package is equal to another control package
+    section_package_list(section: str) - Returns list of packages in given section (if there is)
     '''
     def __init__(self, control: list[str]) -> None:
         '''
         Initializes instance and parses control
         '''
         self.sections = {}
-        self.original = []
+        self.original = control
+        self.lists = {}
+        self.__init_sections_()
+        # Should never broke, because it is default package sections
+        self.version = self.sections["version"]
+        self.arch = self.sections["architecture"]
+        self.name = self.sections["package"]
+        self.package = Package(self.name, self.version, self.arch, "=")
+
+    def __eq__(self, __value: object) -> bool:
+        if not isinstance(__value, Control):
+            return False
+        return self.package == __value.package
+
+    def __init_sections_(self) -> None:
         latest = ""
-        for line in control:
+        original = []
+        for line in self.original:
             if re.match(definitions.CONTROL_SECTION_REGEX, line.strip()):
-                section, data = line.lower().strip().split(":", 1)
-                latest = section
-                self.sections[section] = data.strip()
+                section, data = line.strip().split(":", 1)
+                latest = section.lower()
+                self.sections[section.lower()] = data.strip()
             else:
                 if latest != "":
                     self.sections[latest] = f"{self.sections[latest]}\n{line.strip()}".strip()
             if latest != "status":
-                self.original.append(line)
-        self.pre_depends_list = None
-        self.depends_list = None
-        self.recommends_list = None
-        # Should never broke, because it is default package sections
-        self.version = self.sections["version"]
-        self.arch = self.sections["architecture"]
-        self.package = self.sections["package"]
+                original.append(line)
+        self.original = original
 
-    def pre_depends(self) -> list[Package]:
+    def section_package_list(self, section: str) -> list[Package]:
         '''
-        Returns copy of packages, in what pre-depends package
+        Returns copy of packages, in what section is package
         '''
-        if self.pre_depends_list is None:
+        if self.lists.get(section) is None:
             try:
-                self.pre_depends_list = parse_packages(self.sections["pre-depends"])
+                self.lists[section] = parse_packages(self.sections[section])
             except KeyError:
-                self.pre_depends_list = []
-        return self.pre_depends_list
-
-    def depends(self) -> list[Package]:
-        '''
-        Returns copy of packages, in what depends package
-        '''
-        if self.depends_list is None:
-            try:
-                self.depends_list = parse_packages(self.sections["depends"])
-            except KeyError:
-                self.depends_list = []
-        return self.depends_list
-
-    def recommends(self) -> list[Package]:
-        '''
-        Returns copy of packages, what recommends to be installed per package
-        '''
-        if self.recommends_list is None:
-            try:
-                self.recommends_list = parse_packages(self.sections["recommends"])
-            except KeyError:
-                self.recommends_list = []
-        return self.recommends_list
+                self.lists[section] = []
+        return self.lists[section]
 
     def __debug_info__(self) -> str:
         '''

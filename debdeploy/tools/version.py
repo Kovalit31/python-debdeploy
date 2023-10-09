@@ -1,297 +1,870 @@
-'''
-Fast port of distutils.version module, what is deprecated
-Provides classes to represent module version numbers (one class for
-each style of version numbering).  There are currently two such classes
-implemented: StrictVersion and LooseVersion.
+""" Facilities to deal with Debian-specific metadata """
 
-Every version number class implements the following interface:
-  * the 'parse' method takes a string and parses it to some internal
-    representation; if the string is an invalid version number,
-    'parse' raises a ValueError exception
-  * the class constructor takes an optional string argument which,
-    if supplied, is passed to 'parse'
-  * vsting returns string, that has been passed to parser
-  * _cmp compares the current instance with either another instance
-    of the same class or a string (which will be parsed to an instance
-    of the same class, thus must follow the same rules)
-'''
+# Copyright (C) 2005       Florian Weimer <fw@deneb.enyo.de>
+# Copyright (C) 2010       John Wright <jsw@debian.org>
+# Copyright (C) 2018-2023  Stuart Prescott <stuart@debian.org>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+import os
+import os.path
 import re
 
-class Version:
-    """Abstract base class for version numbering classes.  Just provides
-    constructor (__init__), because this
-    seem to be the same for all version numbering classes; and route
-    rich comparisons to _cmp.
+try:
+    # pylint: disable=unused-import,deprecated-class
+    from typing import (
+        Any,
+        AnyStr,
+        BinaryIO,
+        Dict,
+        Iterable,
+        Iterator,
+        Generator,
+        List,
+        Match,
+        NoReturn,
+        Optional,
+        Pattern,
+        Text,
+        TextIO,
+        Tuple,
+        Union,
+    )
+except ImportError:
+    # Lack of typing is not important at runtime
+    pass
+
+try:
+    import apt_pkg
+    try:
+        apt_pkg.init()
+        HAVE_APT_PKG = True
+    except apt_pkg.Error:
+        # If dpkg (e.g., tupledata) is missing, we can import apt_pkg but .init()
+        # will raise an exception
+        HAVE_APT_PKG = False
+except ImportError:
+    HAVE_APT_PKG = False
+
+# Use the built-in _sha extension instead of hashlib to avoid a dependency on
+# OpenSSL, which is incompatible with the GPL.
+try:
+    import _sha1    # type: ignore
+    new_sha1 = _sha1.sha1
+except ImportError:
+    def new_sha1(*args): # pylint: disable=unused-argument
+        # type: (bytes) -> str
+        '''
+        Defines a sha1 hash function, that does nothing
+        because it depends on OpenSSL, which may not be linked with this library due to license
+        '''
+        raise NotImplementedError(
+            "Built-in sha1 implementation not found; cannot use hashlib"
+            " implementation because it depends on OpenSSL, which"
+            " may not be linked with this library due to license"
+            " incompatibilities")
+
+
+# Use the built-in _sha256 extension instead of hashlib to avoid a dependency on
+# OpenSSL, which is incompatible with the GPL.
+try:
+    import _sha256    # type: ignore
+    new_sha256 = _sha256.sha256
+except ImportError:
+    def new_sha256(*args):    # pylint: disable=unused-argument
+        # type: (bytes) -> str
+        '''
+        Defines a sha256 hash function, that does nothing
+        because it depends on OpenSSL, which may not be linked with this library due to license
+        '''
+        raise NotImplementedError(
+            "Built-in sha1 implementation not found; cannot use hashlib"
+            " implementation because it depends on OpenSSL, which"
+            " may not be linked with this library due to license"
+            " incompatibilities")
+
+
+class ParseError(Exception):
+    """An exception which is used to signal a parse failure.
+
+    Attributes:
+
+    filename - name of the file
+    lineno - line number in the file
+    msg - error message
+
     """
 
-    def __init__ (self, vstring=None):
-        if vstring:
-            self.parse(vstring)
-            return
-        self.vstring = vstring
+    def __init__(self,
+                 filename,     # type: str
+                 lineno,       # type: int
+                 msg           # type: str
+                 ):
+        # type: (...) -> None
+        assert isinstance(lineno, int)
+        self.filename = filename
+        self.lineno = lineno
+        self.msg = msg
+        super(ParseError, self).__init__(self)
 
-    def __eq__(self, other):
-        _c = self._cmp(other)
-        if _c is NotImplemented:
-            return _c
-        return _c == 0
+    def __str__(self):
+        # type: () -> str
+        return self.msg
+
+    def __repr__(self):
+        # type: () -> str
+        return f"ParseError({self.filename}, {self.lineno}, {self.msg})"
+
+    def print_out(self, file):
+        # type: (TextIO) -> None
+        """Writes a machine-parsable error message to file."""
+        file.write(f"{self.filename}:{self.lineno}: {self.msg}\n")
+        file.flush()
+
+
+class BaseVersion(object):
+    """Base class for classes representing Debian versions
+
+    It doesn't implement any comparison, but it does check for valid versions
+    according to Section 5.6.12 in the Debian Policy Manual.  Since splitting
+    the version into epoch, upstream_version, and debian_revision components is
+    pretty much free with the validation, it sets those fields as properties of
+    the object, and sets the raw version to the full_version property.  A
+    missing epoch or debian_revision results in the respective property set to
+    None.  Setting any of the properties results in the full_version being
+    recomputed and the rest of the properties set from that.
+
+    It also implements __str__, just returning the raw version given to the
+    initializer.
+    """
+
+    re_valid_version = re.compile(
+        r"^((?P<epoch>\d+):)?"
+        "(?P<upstream_version>[A-Za-z0-9.+:~-]+?)"
+        "(-(?P<debian_revision>[A-Za-z0-9+.~]+))?$")
+    magic_attrs = (
+        'full_version', 'epoch', 'upstream_version',
+        'debian_revision', 'debian_version')
+
+    def __init__(self, version):
+        # type: (Optional[Union[str, BaseVersion]]) -> None
+        if isinstance(version, BaseVersion):
+            version = str(version)
+        self.full_version = version
+
+    def _set_full_version(self, version):
+        # type: (str) -> None
+        _m = self.re_valid_version.match(version)
+        if not _m:
+            raise ValueError(f"Invalid version string {version}")
+        # If there no epoch ("1:..."), then the upstream version can not
+        # contain a :.
+        if _m.group("epoch") is None and ":" in _m.group("upstream_version"):
+            raise ValueError(f"Invalid version string {version}")
+
+        # pylint: disable=attribute-defined-outside-init
+        self.__full_version = version  # pylint: disable = unused-private-member
+        self.__epoch = _m.group("epoch")
+        self.__upstream_version = _m.group("upstream_version")
+        self.__debian_revision = _m.group("debian_revision")
+
+    def __setattr__(self, attr, value):
+        # type: (str, Optional[Text]) -> None
+        if attr not in self.magic_attrs:
+            super(BaseVersion, self).__setattr__(attr, value)
+            return
+
+        # For compatibility with the old changelog.Version class
+        if attr == "debian_version":
+            attr = "debian_revision"
+
+        if attr == "full_version":
+            self._set_full_version(str(value))
+        else:
+            if value is not None:
+                value = str(value)
+            private = f"_BaseVersion__{attr}"
+            old_value = getattr(self, private)
+            setattr(self, private, value)
+            try:
+                self._update_full_version()
+            except ValueError as exc:
+                # Don't leave it in an invalid state
+                setattr(self, private, old_value)
+                self._update_full_version()
+                raise ValueError(
+                    f"Setting {attr} to {value} results in invalid version"
+                    ) from exc
+
+    def __getattr__(self, attr):
+        # type: (str) -> Optional[str]
+        if attr not in self.magic_attrs:
+            return super(BaseVersion, self).__getattribute__(attr) # type: ignore
+
+        # For compatibility with the old changelog.Version class
+        if attr == "debian_version":
+            attr = "debian_revision"
+
+        private = f"_BaseVersion__{attr}"
+        return getattr(self, private)  # type: ignore
+
+    def _update_full_version(self):
+        # type: () -> None
+        version = ""
+        if self.__epoch is not None:
+            version += self.__epoch + ":"
+        version += self.__upstream_version
+        if self.__debian_revision:
+            version += "-" + self.__debian_revision
+        self.full_version = version
+
+    def __str__(self):
+        # type: () -> str
+        return self.full_version if self.full_version is not None else ""
+
+    def __repr__(self):
+        # type: () -> str
+        return f"{self.__class__.__name__}('{self}')"
+
+    def _compare(self, other):
+        # type: (Any) -> int
+        raise NotImplementedError
+
+    # TODO: Once we support only Python >= 2.7, we can simplify this using
+    # @functools.total_ordering.
 
     def __lt__(self, other):
-        _c = self._cmp(other)
-        if _c is NotImplemented:
-            return _c
-        return _c < 0
+        # type: (Any) -> bool
+        return self._compare(other) < 0
 
     def __le__(self, other):
-        _c = self._cmp(other)
-        if _c is NotImplemented:
-            return _c
-        return _c <= 0
+        # type: (Any) -> bool
+        return self._compare(other) <= 0
 
-    def __gt__(self, other):
-        _c = self._cmp(other)
-        if _c is NotImplemented:
-            return _c
-        return _c > 0
+    def __eq__(self, other):
+        # type: (Any) -> bool
+        return self._compare(other) == 0
+
+    def __ne__(self, other):
+        # type: (Any) -> bool
+        return self._compare(other) != 0
 
     def __ge__(self, other):
-        _c = self._cmp(other)
-        if _c is NotImplemented:
-            return _c
-        return _c >= 0
+        # type: (Any) -> bool
+        return self._compare(other) >= 0
 
-    def _cmp (self, _):
-        return NotImplemented
+    def __gt__(self, other):
+        # type: (Any) -> bool
+        return self._compare(other) > 0
 
-    def parse(self, _):
-        '''
-        Would parse vstring
-        '''
+    def __hash__(self):
+        # type: () -> int
+        return hash(str(self))
 
 
-# Interface for version-number classes -- must be implemented
-# by the following classes (the concrete ones -- Version should
-# be treated as an abstract class).
-#    __init__ (string) - create and take same action as 'parse'
-#                        (string parameter is optional)
-#    parse (string)    - convert a string representation to whatever
-#                        internal representation is appropriate for
-#                        this style of version numbering
-#    _cmp (self, other) - compare two version numbers ('other' may
-#                        be an unparsed version string, or another
-#                        instance of your version class)
+class AptPkgVersion(BaseVersion):
+    """Represents a Debian package version, using apt_pkg.VersionCompare"""
+
+    def __init__(self, version):
+        # type: (Optional[Union[str, BaseVersion]]) -> None
+        if not HAVE_APT_PKG:
+            raise NotImplementedError("apt_pkg not available; install the "
+                                      "python-apt package")
+        super(AptPkgVersion, self).__init__(version)
+
+    def _compare(self, other):
+        # type: (Any) -> int
+        return apt_pkg.version_compare(str(self), str(other))
 
 
-class StrictVersion (Version):
+# NativeVersion based on the DpkgVersion class by Raphael Hertzog in
+# svn://svn.debian.org/qa/trunk/pts/www/bin/common.py r2361
+class NativeVersion(BaseVersion):
+    """Represents a Debian package version, with native Python comparison"""
 
-    """Version numbering for anal retentives and software idealists.
-    Implements the standard interface for version number classes as
-    described above.  A version number consists of two or three
-    dot-separated numeric components, with an optional "pre-release" tag
-    on the end.  The pre-release tag consists of the letter 'a' or 'b'
-    followed by a number.  If the numeric components of two version
-    numbers are equal, then one with a pre-release tag will always
-    be deemed earlier (lesser) than one without.
+    re_all_digits_or_not = re.compile(r"\d+|\D+")
+    re_digits = re.compile(r"\d+")
+    re_digit = re.compile(r"\d")
+    re_alpha = re.compile("[A-Za-z]")
 
-    The following are valid version numbers (shown in the order that
-    would be obtained by sorting according to the supplied cmp function):
+    def _compare(self, other):
+        # type: (Any) -> int
+        # Convert other into an instance of BaseVersion if it's not already.
+        # (All we need is epoch, upstream_version, and debian_revision
+        # attributes, which BaseVersion gives us.) Requires other's string
+        # representation to be the raw version.
 
-        0.4       0.4.0  (these two are equivalent)
-        0.4.1
-        0.5a1
-        0.5b3
-        0.5
-        0.9.6
-        1.0
-        1.0.4a3
-        1.0.4b1
-        1.0.4
-
-    The following are examples of invalid version numbers:
-
-        1
-        2.7.2.2
-        1.3.a4
-        1.3pl1
-        1.3c4
-
-    The rationale for this version numbering system will be explained
-    in the distutils documentation.
-    """
-
-    version_re = re.compile(r'^(\d+) \. (\d+) (\. (\d+))? ([ab](\d+))?$',
-                            re.VERBOSE | re.ASCII)
-
-    def parse (self, vstring):
-        match = self.version_re.match(vstring)
-        if not match:
-            raise ValueError(f"invalid version number '{vstring}'")
-        self.vstring = vstring
-
-        (major, minor, patch, prerelease, prerelease_num) = \
-            match.group(1, 2, 4, 5, 6)
-
-        if patch:
-            self.version = tuple(map(int, [major, minor, patch]))
-        else:
-            self.version = tuple(map(int, [major, minor])) + (0,)
-
-        if prerelease:
-            self.prerelease = (prerelease[0], int(prerelease_num))
-        else:
-            self.prerelease = None
-
-    def _cmp (self, other) :
-        if isinstance(other, str):
-            other = StrictVersion(other)
-
-        if self.version != other.version:
-            # numeric versions don't match
-            # prerelease stuff doesn't matter
-            if self.version < other.version:
-                return -1
+        # If other is not defined, then the current version is bigger
+        if other is None:
             return 1
 
-        # have to compare prerelease
-        # case 1: neither has prerelease; they're equal
-        # case 2: self has prerelease, other doesn't; other is greater
-        # case 3: self doesn't have prerelease, other does: self is greater
-        # case 4: both have prerelease: must compare them!
-
-        if (not self.prerelease and not other.prerelease):
-            return 0
-        if (self.prerelease and not other.prerelease):
-            return -1
-        if (not self.prerelease and other.prerelease):
-            return 1
-        if (self.prerelease and other.prerelease):
-            if self.prerelease == other.prerelease:
-                return 0
-            if self.prerelease < other.prerelease:
-                return -1
-            return 1
-        assert False, "never get here"
-
-# The rules according to Greg Stein:
-# 1) a version number has 1 or more numbers separated by a period or by
-#    sequences of letters. If only periods, then these are compared
-#    left-to-right to determine an ordering.
-# 2) sequences of letters are part of the tuple for comparison and are
-#    compared lexicographically
-# 3) recognize the numeric components may have leading zeroes
-#
-# The LooseVersion class below implements these rules: a version number
-# string is split up into a tuple of integer and string components, and
-# comparison is a simple tuple comparison.  This means that version
-# numbers behave in a predictable and obvious way, but a way that might
-# not necessarily be how people *want* version numbers to behave.  There
-# wouldn't be a problem if people could stick to purely numeric version
-# numbers: just split on period and compare the numbers as tuples.
-# However, people insist on putting letters into their version numbers;
-# the most common purpose seems to be:
-#   - indicating a "pre-release" version
-#     ('alpha', 'beta', 'a', 'b', 'pre', 'p')
-#   - indicating a post-release patch ('p', 'pl', 'patch')
-# but of course this can't cover all version number schemes, and there's
-# no way to know what a programmer means without asking him.
-#
-# The problem is what to do with letters (and other non-numeric
-# characters) in a version number.  The current implementation does the
-# obvious and predictable thing: keep them as strings and compare
-# lexically within a tuple comparison.  This has the desired effect if
-# an appended letter sequence implies something "post-release":
-# eg. "0.99" < "0.99pl14" < "1.0", and "5.001" < "5.001m" < "5.002".
-#
-# However, if letters in a version number imply a pre-release version,
-# the "obvious" thing isn't correct.  Eg. you would expect that
-# "1.5.1" < "1.5.2a2" < "1.5.2", but under the tuple/lexical comparison
-# implemented here, this just isn't so.
-#
-# Two possible solutions come to mind.  The first is to tie the
-# comparison algorithm to a particular set of semantic rules, as has
-# been done in the StrictVersion class above.  This works great as long
-# as everyone can go along with bondage and discipline.  Hopefully a
-# (large) subset of Python module programmers will agree that the
-# particular flavour of bondage and discipline provided by StrictVersion
-# provides enough benefit to be worth using, and will submit their
-# version numbering scheme to its domination.  The free-thinking
-# anarchists in the lot will never give in, though, and something needs
-# to be done to accommodate them.
-#
-# Perhaps a "moderately strict" version class could be implemented that
-# lets almost anything slide (syntactically), and makes some heuristic
-# assumptions about non-digits in version number strings.  This could
-# sink into special-case-hell, though; if I was as talented and
-# idiosyncratic as Larry Wall, I'd go ahead and implement a class that
-# somehow knows that "1.2.1" < "1.2.2a2" < "1.2.2" < "1.2.2pl3", and is
-# just as happy dealing with things like "2g6" and "1.13++".  I don't
-# think I'm smart enough to do it right though.
-#
-# In any case, I've coded the test suite for this module (see
-# ../test/test_version.py) specifically to fail on things like comparing
-# "1.2a2" and "1.2".  That's not because the *code* is doing anything
-# wrong, it's because the simple, obvious design doesn't match my
-# complicated, hairy expectations for real-world version numbers.  It
-# would be a snap to fix the test suite to say, "Yep, LooseVersion does
-# the Right Thing" (ie. the code matches the conception).  But I'd rather
-# have a conception that matches common notions about version numbers.
-
-class LooseVersion (Version):
-
-    """Version numbering for anarchists and software realists.
-    Implements the standard interface for version number classes as
-    described above.  A version number consists of a series of numbers,
-    separated by either periods or strings of letters.  When comparing
-    version numbers, the numeric components will be compared
-    numerically, and the alphabetic components lexically.  The following
-    are all valid version numbers, in no particular order:
-
-        1.5.1
-        1.5.2b2
-        161
-        3.10a
-        8.02
-        3.4j
-        1996.07.12
-        3.2.pl0
-        3.1.1.6
-        2g6
-        11g
-        0.960923
-        2.2beta29
-        1.13++
-        5.5.kw
-        2.0b1pl0
-
-    In fact, there is no such thing as an invalid version number under
-    this scheme; the rules for comparison are simple and predictable,
-    but may not always give the results you want (for some definition
-    of "want").
-    """
-
-    component_re = re.compile(r'(\d+ | [a-z]+ | \.)', re.VERBOSE)
-    version = None
-    def parse(self, vstring: str) -> None:
-        # I've given up on thinking I can reconstruct the version string
-        # from the parsed tuple -- so I just store the string here for
-        # use by __str__
-        self.vstring = vstring
-        components = [x for x in self.component_re.split(vstring)
-                              if x and x != '.']
-        for i, obj in enumerate(components):
+        if not isinstance(other, BaseVersion):
             try:
-                components[i] = int(obj)
-            except ValueError:
-                pass
+                other = BaseVersion(str(other))
+            except ValueError as _e:
+                raise ValueError(
+                    f"Couldn't convert {other} to BaseVersion"
+                    ) from _e
 
-        self.version = components
-
-    def _cmp (self, other) -> int:
-        if isinstance(other, str):
-            other = LooseVersion(other)
-        if self.version == other.version:
-            return 0
-        if self.version < other.version:
+        lepoch = int(self.epoch or "0")
+        repoch = int(other.epoch or "0")
+        if lepoch < repoch:
             return -1
-        if self.version > other.version:
+        if lepoch > repoch:
             return 1
+        res = self._version_cmp_part(self.upstream_version or "0",
+                                     other.upstream_version or "0")
+        if res != 0:
+            return res
+        return self._version_cmp_part(self.debian_revision or "0",
+                                      other.debian_revision or "0")
+
+    @classmethod
+    def _order(cls, x):
+        # type: (str) -> int
+        """Return an integer value for character x"""
+        if x == '~':
+            return -1
+        if cls.re_digit.match(x):
+            return int(x) + 1
+        if cls.re_alpha.match(x):
+            return ord(x)
+        return ord(x) + 256
+
+    @classmethod
+    def _version_cmp_string(cls, va, vb):
+        # type: (str, str) -> int
+        la = [cls._order(x) for x in va]
+        lb = [cls._order(x) for x in vb]
+        while la or lb:
+            a = 0
+            b = 0
+            if la:
+                a = la.pop(0)
+            if lb:
+                b = lb.pop(0)
+            if a < b:
+                return -1
+            if a > b:
+                return 1
+        return 0
+
+    @classmethod
+    def _version_cmp_part(cls, va, vb):
+        # type: (str, str) -> int
+        la = cls.re_all_digits_or_not.findall(va)
+        lb = cls.re_all_digits_or_not.findall(vb)
+        while la or lb:
+            a = "0"
+            b = "0"
+            if la:
+                a = la.pop(0)
+            if lb:
+                b = lb.pop(0)
+            if cls.re_digits.match(a) and cls.re_digits.match(b):
+                aval = int(a)
+                bval = int(b)
+                if aval < bval:
+                    return -1
+                if aval > bval:
+                    return 1
+            else:
+                res = cls._version_cmp_string(a, b)
+                if res != 0:
+                    return res
+        return 0
+
+
+if HAVE_APT_PKG:
+    class Version(AptPkgVersion):
+        '''
+        Version class that uses apt_pkg.VersionCompare to compare versions.
+        '''
+else:
+    class Version(NativeVersion):      # type: ignore
+        '''
+        Version class that uses NativeVersion to compare versions.
+        '''
+
+
+def version_compare(a, b) -> int:
+    # type: (Any, Any) -> int
+    '''
+    Compare two versions
+    '''
+    va = Version(a)
+    vb = Version(b)
+    if va < vb:
+        return -1
+    if va > vb:
+        return 1
+    return 0
+
+
+class PackageFile:
+    """A Debian package file.
+
+    Objects of this class can be used to read Debian's Source and
+    Packages files."""
+
+    re_field = re.compile(r'^([A-Za-z][A-Za-z0-9-_]+):(?:\s*(.*?))?\s*$')
+    re_continuation = re.compile(r'^\s+(?:\.|(\S.*?)\s*)$')
+
+    def __init__(self,
+                 name,              # type: str
+                 file_obj=None,     # type: Optional[Union[TextIO, BinaryIO]]
+                 encoding="utf-8",  # type: str
+                 ):
+        # type: (...) -> None
+        """Creates a new package file object.
+
+        name - the name of the file the data comes from
+        file_obj - an alternate data source; the default is to open the
+                  file with the indicated name.
+        """
+        if file_obj is None:
+            file_obj = open(name, 'rb')  # pylint: disable=consider-using-with
+        self.name = name
+        self.file = file_obj
+        self.lineno = 0
+        self.encoding = encoding
+
+    def __iter__(self):
+        # type: () -> Generator[List[Tuple[str, str]], None, None]
+        line = self._aux_read_line()
+        self.lineno += 1
+        pkg = []   # type: List[Tuple[str, str]]
+        while line:
+            if line.strip(' \t') == '\n':
+                if not pkg:
+                    self.raise_syntax_error('expected package record')
+                yield pkg
+                pkg = []
+                line = self._aux_read_line()
+                self.lineno += 1
+                continue
+
+            match = self.re_field.match(line)  # type: Optional[Match[str]]
+            if not match:
+                self.raise_syntax_error("expected package field")
+            (name, contents) = match.groups()
+            contents = contents or ''
+
+            while True:
+                line = self._aux_read_line()
+                self.lineno += 1
+                match = self.re_continuation.match(line)
+                if match:
+                    (ncontents,) = match.groups()
+                    if ncontents is None:
+                        ncontents = ""
+                    contents = f"{contents}\n{ncontents}"
+                else:
+                    break
+            pkg.append((name, contents))
+        if pkg:
+            yield pkg
+
+    def _aux_read_line(self):
+        # type: () -> str
+        # Not always readline returns a byte object, also str
+        # can be returned (i.e: StringIO)
+        line = self.file.readline()
+        if isinstance(line, bytes):
+            return line.decode(self.encoding)
+        return line
+
+    def raise_syntax_error(self, msg, lineno=None):
+        # type: (str, Optional[int]) -> NoReturn
+        '''
+        Raises a ParseError with the given message.
+        '''
+        if lineno is None:
+            lineno = self.lineno
+        raise ParseError(self.name, lineno, msg)
+
+
+class PseudoEnum:
+    """A base class for types which resemble enumeration types."""
+    def __init__(self,
+                 name,     # type: str
+                 order,    # type: Any
+                 ):
+        self._name = name
+        self._order = order
+
+    def __repr__(self):
+        # type: () -> str
+        return f'{self.__class__.__name__}({self._name})'
+
+    def __str__(self):
+        # type: () -> str
+        return self._name
+
+    # TODO: Once we support only Python >= 2.7, we can simplify this using
+    # @functools.total_ordering.
+
+    def __lt__(self, other):
+        # type: (Any) -> Any
+        return self._order < other._order
+
+    def __le__(self, other):
+        # type: (Any) -> Any
+        return self._order <= other._order
+
+    def __eq__(self, other):
+        # type: (Any) -> Any
+        return self._order == other._order
+
+    def __ne__(self, other):
+        # type: (Any) -> Any
+        return self._order != other._order
+
+    def __ge__(self, other):
+        # type: (Any) -> Any
+        return self._order >= other._order
+
+    def __gt__(self, other):
+        # type: (Any) -> Any
+        return self._order > other._order
+
+    def __hash__(self):
+        # type: () -> int
+        return hash(self._order)
+
+
+class Release(PseudoEnum):
+    """
+    Debian release defined with respect to its name, order of release
+    and version. The latter can be empty in case of 'sid'.
+
+    See https://www.debian.org/releases/
+    """
+    releases = {}    # type: Dict[str, Release]
+
+    def __init__(self,
+                 name,         # type: str
+                 order,        # type: Any
+                 version=""    # type: str
+                 ):
+        super(Release, self).__init__(name, order)
+        self.version = version
+
+
+def list_releases():
+    # type: () -> Dict[str, Release]
+    """
+     Returns dict of Debian releases
+    """
+    releases = {}
+    rels = (("buzz", "1.1"),
+            ("rex", "1.2"),
+            ("bo", "1.3"),
+            ("hamm", "2.0"),
+            ("slink", "2.1"),
+            ("potato", "2.2"),
+            ("woody", "3.0"),
+            ("sarge", "3.1"),
+            ("etch", "4.0"),
+            ("lenny", "5.0"),
+            ("squeeze", "6.0"),
+            ("wheezy", "7"),
+            ("jessie", "8"),
+            ("stretch", "9"),
+            ("buster", "10"),
+            ("bullseye", "11"),
+            ("bookworm", "12"),
+            ("trixie", "13"),
+            ("forky", "14"),
+            ("sid", ""))
+    for idx, rel in enumerate(rels):
+        name, version = rel
+        releases[name] = Release(name, idx, version)
+    Release.releases = releases
+    return releases
+
+
+_release_list = list_releases()
+
+
+def intern_release(name, releases=None) -> Release:
+    # type: (str, Optional[Any]) -> Any
+    '''
+    Get release for the given name.
+    '''
+    if releases is None:
+        releases = _release_list
+    return releases.get(name)
+
+
+del list_releases
+
+
+def read_lines_sha256(lines):
+    # type: (Union[List[bytes], List[str]]) -> str
+    m = new_sha256()
+    for l in lines:
+        if isinstance(l, bytes):
+            m.update(l)
+        else:
+            m.update(l.encode("UTF-8"))
+    return m.hexdigest()   # type: ignore
+
+
+def read_lines_sha1(lines):
+    # type: (Union[List[bytes], List[str]]) -> str
+    m = new_sha1()
+    for l in lines:
+        if isinstance(l, bytes):
+            m.update(l)
+        else:
+            m.update(l.encode("UTF-8"))
+    return m.hexdigest()   # type: ignore
+
+
+_patch_re_raw = r'^(\d+)(?:,(\d+))?([acd])$'
+_patch_re = re.compile(_patch_re_raw)  # type: Pattern[str]
+_patch_re_b = re.compile(_patch_re_raw.encode('UTF-8'))   # type: Pattern[bytes]
+
+
+def patches_from_ed_script(
+        source,       # type: Iterable[AnyStr]
+        re_cmd=None,  # type: Optional[Pattern[AnyStr]]
+    ):
+    # type: (...) -> Iterator[Tuple[int, int, List[AnyStr]]]
+    """Converts source to a stream of patches.
+
+    Patches are triples of line indexes:
+
+    - number of the first line to be replaced
+    - one plus the number of the last line to be replaced
+    - list of line replacements
+
+    This is enough to model arbitrary additions, deletions and
+    replacements.
+    """
+
+    i = iter(source)
+
+    patch_re = re_cmd
+
+    for line in i:
+        if not patch_re:
+            patch_re = _patch_re_b if isinstance(line, bytes) else _patch_re
+
+        match = patch_re.match(line)
+        if match is None:
+            raise ValueError("invalid patch command: %r" % line)
+
+        (first_, last_, cmd) = match.groups()
+        first = int(first_)
+        last = None if last_ is None else int(last_)
+
+        # using ord() makes this work for str and bytes objects
+        if ord(cmd) == 100: # cmd == d
+            first = first - 1
+            if last is None:
+                last = first + 1
+            yield (first, last, [])
+            continue
+
+        if ord(cmd) == 97: # cmd == a
+            if last is not None:
+                raise ValueError("invalid patch argument: %r" % line)
+            last = first
+        else:                           # cmd == c
+            first = first - 1
+            if last is None:
+                last = first + 1
+
+        lines = []
+        for c in i:
+            if c in ('', b''):
+                raise ValueError("end of stream in command: %r" % line)
+            if c in ('.\n', '.', b'.\n', b'.'):
+                break
+            lines.append(c)
+        yield (first, last, lines)
+
+
+def patch_lines(
+        lines,        # type: List[AnyStr]
+        patches,      # type: Iterable[Tuple[int, int, List[AnyStr]]]
+    ):
+    # type: (...) -> None
+    """Applies patches to lines.  Updates lines in place."""
+    for (first, last, args) in patches:
+        lines[first:last] = args
+
+
+def replace_file(lines, local, encoding="UTF-8"):
+    # type: (List[str], str, str) -> None
+    local_new = local + '.new'
+
+    try:
+        with open(local_new, 'w+', encoding=encoding) as new_file:
+            for l in lines:
+                new_file.write(l)
+        os.replace(local_new, local)
+    finally:
+        if os.path.exists(local_new):
+            os.unlink(local_new)
+
+
+def download_gunzip_lines(remote):
+    # type: (str) -> List[str]
+    """Downloads a file from a remote location and gunzips it.
+
+    Returns the lines in the file."""
+    # pylint: disable=import-outside-toplevel
+    import gzip
+    from urllib.request import urlopen
+
+    with urlopen(remote) as zfd:
+        with gzip.open(zfd, mode="rt") as gfd:
+            return gfd.readlines()   # type: ignore
+
+
+def download_file(remote, local):
+    # type: (str, str) -> List[str]
+    """Copies a gzipped remote file to the local system.
+
+    remote - URL, without the .gz suffix
+    local - name of the local file
+    """
+
+    lines = download_gunzip_lines(remote + '.gz')
+    replace_file(lines, local)
+    return lines
+
+
+def update_file(remote, local, verbose=False):
+    # type: (str, str, bool) -> List[str]
+    """Updates the local file by downloading a remote patch.
+
+    Returns a list of lines in the local file.
+    """
+
+    try:
+        with open(local, 'r', encoding="UTF-8") as local_file:
+            lines = local_file.readlines()
+    except IOError:
+        if verbose:
+            print("update_file: no local copy, downloading full file")
+        return download_file(remote, local)
+
+    patches_to_apply = []    # type: List[str]
+    patch_hashes = {}        # type: Dict[str, str]
+
+    # pylint: disable=import-outside-toplevel
+    from urllib.request import urlopen
+
+    index_name = remote + '.diff/Index'
+
+    re_whitespace = re.compile(r'\s+')
+
+    try:
+        with urlopen(index_name) as index_url:
+            index_fields = list(PackageFile(index_name, index_url))
+    except ParseError:
+        # FIXME: urllib does not raise a proper exception, so we parse
+        # the error message.
+        if verbose:
+            print("update_file: could not interpret patch index file")
+        return download_file(remote, local)
+    except IOError:
+        if verbose:
+            print("update_file: could not download patch index file")
+        return download_file(remote, local)
+
+    if 'SHA256-Current' in [k for fields in index_fields for k,v in fields]:
+        if verbose:
+            print("update_file: using sha256")
+        prefix = 'SHA256'
+        local_hash = read_lines_sha256(lines)
+        read_lines = read_lines_sha256
+    else:
+        if verbose:
+            print("update_file: using sha1")
+        prefix = 'SHA1'
+        local_hash = read_lines_sha1(lines)
+        read_lines = read_lines_sha1
+
+    for fields in index_fields:
+        for (field, value) in fields:
+            if field == prefix+'-Current':
+                (remote_hash, _) = re_whitespace.split(value)
+                if local_hash == remote_hash:
+                    if verbose:
+                        print("update_file: local file is up-to-date")
+                    return lines
+                continue
+
+            if field == prefix+'-History':
+                for entry in value.splitlines():
+                    if entry == '':
+                        continue
+                    (hist_hash, _, patch_name) = re_whitespace.split(entry)
+
+                    # After the first patch, we have to apply all
+                    # remaining patches.
+                    if patches_to_apply or hist_hash == local_hash:
+                        patches_to_apply.append(patch_name)
+
+                continue
+
+            if field == prefix+'-Patches':
+                for entry in value.splitlines():
+                    if entry == '':
+                        continue
+                    (patch_hash, _, patch_name) = re_whitespace.split(entry)
+                    patch_hashes[patch_name] = patch_hash
+                continue
+
+            if verbose:
+                print("update_file: field %r ignored" % field)
+
+    if not patches_to_apply:
+        if verbose:
+            print("update_file: could not find historic entry", local_hash)
+        return download_file(remote, local)
+
+    for patch_name in patches_to_apply:
+        if verbose:
+            print("update_file: downloading patch %r" % patch_name)
+        patch_contents = download_gunzip_lines(
+            remote + '.diff/' + patch_name + '.gz')
+        if read_lines(patch_contents) != patch_hashes[patch_name]:
+            raise ValueError("patch %r was garbled" % patch_name)
+        patch_contents_unicode = list(patch_contents)
+        patch_lines(lines, patches_from_ed_script(patch_contents_unicode))
+
+    new_hash = read_lines(lines)
+    if new_hash != remote_hash:
+        raise ValueError("patch failed, got %s instead of %s"
+                         % (new_hash, remote_hash))
+
+    replace_file(lines, local)
+    return lines
+
+
+def merge_as_sets(*args):           # type: ignore
+    """Create an order set (represented as a list) of the objects in
+    the sequences passed as arguments."""
+    s = {}
+    for x in args:
+        for y in x:
+            s[y] = True
+    return sorted(s)

@@ -8,18 +8,18 @@ Deb package builder and deployer from already installed packeges on Python3 for 
 
 ## Installing
 
-'pip3 install https://github.com/Kovalit31/python-debdeploy/archive/refs/heads/main.zip' (replace main with required branch)
+'pip3 install <https://github.com/Kovalit31/python-debdeploy/archive/refs/heads/main.zip>' (replace main with required branch)
 
 ## Usage
 
 To build package, just start
-'debdeploy <package>'
+'debdeploy &lt;package&gt;'
 For help, run
 'debdeploy --help'
 
 ## Defaults
 
-Default path, where is saving debs and cache is '/tmp/debdeploy-<random characters>' and '/tmp/debdeploy-<random characters>-cache' equalent
+Default path, where is saving debs and cache is '/tmp/debdeploy-&lt;random characters&gt;' and '/tmp/debdeploy-&lt;random characters&gt;-cache' equalent
 
 ## NOTE
 

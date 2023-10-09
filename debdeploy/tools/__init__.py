@@ -1,18 +1,37 @@
 '''
+
+    debdeploy - Build dpkg package and it dependencies from dpkg cache
+    Copyright (C) 2023 Kovalit31
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
 Tools module. Contains tools for extracting and work with package files
 '''
 import os
 import platform
+import random
 import re
+import string
 
-from . import control, definitions, files, build, version
-
-def check_sudo() -> bool:
+def check_sudo(ignore=False) -> None:
     '''
     Checks for sudo permission
     If there isn't root, return False
     '''
-    return os.getuid() == 0
+    if os.getuid() != 0:
+        printf(
+            "Programm can't be run without sudo.",
+            level='f',
+            exception=PermissionError,
+            check=ignore)
 
 def printf(*message, level="i", exception=Exception, check=False):
     '''
@@ -23,7 +42,7 @@ def printf(*message, level="i", exception=Exception, check=False):
     level = level[0].lower()
     symbol = "#" if level == 'd' else "~" if level == 'v' else '*' if level == "i" else "!" \
         if level == "w" else "@" if level == "e" else "&" if level != 'c' else '`'
-    out_msg = f"[{symbol}] {''.join(message)}"
+    out_msg = f"[{symbol}] {''.join(message)}".replace("\n", "\n[`] ")
     print(
         out_msg
     )
@@ -58,3 +77,18 @@ def get_arch() -> str:
         pattern, repl = _x.split("/")
         arch = re.sub(pattern, repl, arch)
     return arch
+
+def normalize_re(regex: str) -> str:
+    '''
+    Normalizes regex characters
+    '''
+    return regex.replace("+", "\\+")
+
+def gen_uuid(length=20) -> str:
+    '''
+    Generates uuid from digits and lowercase ascii letters
+    '''
+    return  "".join(random.choices([*(string.ascii_lowercase+string.digits)],k=length))
+
+# pylint: disable=[wrong-import-position]
+from . import control, definitions, files, build, version

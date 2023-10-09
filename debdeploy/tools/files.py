@@ -1,10 +1,24 @@
 '''
+
+    debdeploy - Build dpkg package and it dependencies from dpkg cache
+    Copyright (C) 2023 Kovalit31
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
 Work with package files
 '''
 import os
 import re
 import shutil
-from debdeploy.tools import definitions, control
+from debdeploy.tools import definitions, control, normalize_re
 from debdeploy import tools
 
 
@@ -17,10 +31,10 @@ def get_files(package: control.Package, default_arch=None) -> list[str]:
     package_files = {}
     archs = []
     for _x in files:
-        if re.match(definitions.PACKAGE_INFO_FILE_REGEX.format(package=package.name),
+        if re.match(definitions.PACKAGE_INFO_FILE_REGEX.format(package=normalize_re(package.name)),
                     _x):
             if ":" in _x:
-                arch = _x.split(".")[0].split(":", 1)[1]
+                arch = "".join(_x.split(".")[:-1]).split(":", 1)[1]
             else:
                 arch = tools.get_arch() # There is two ways:
                                         # If there is multiarch packgae (all targets)
@@ -66,7 +80,7 @@ def copy_files_to_target(files: list[str], target: str) -> None:
     package_list = os.path.join(metadata, "list")
     for _x in files:
         shutil.copy2(os.path.join(definitions.DPKG_CACHE_INFO_FILES_ROOT, _x),
-                         os.path.join(metadata, _x.split(".")[1]),
+                         os.path.join(metadata, _x.split(".")[-1]),
                          )
     with open(package_list, "r", encoding="utf-8") as _f:
         files = _f.readlines()
