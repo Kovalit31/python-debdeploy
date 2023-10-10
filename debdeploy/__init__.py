@@ -99,6 +99,7 @@ def main(args: argparse.Namespace = None):
     """
     args = args if args is not None else parse()
     tools.check_sudo(args.no_superuser)
+    tools.check_debian_linux()
     package_enum = {
         "packages": tools.control.parse_packages(", ".join(args.packages)),
         "builded": [],

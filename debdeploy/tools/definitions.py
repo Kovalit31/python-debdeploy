@@ -52,4 +52,8 @@ class NoPackageModifierError(Exception):
     pass
 
 
+class PlatformNotSupportedError(Exception):
+    pass
+
+
 # pylint: enable=[missing-class-docstring]

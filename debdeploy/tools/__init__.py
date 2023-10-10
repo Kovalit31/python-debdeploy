@@ -116,5 +116,20 @@ def gen_uuid(length=20) -> str:
     )
 
 
+def check_debian_linux() -> bool:
+    """
+    Checks that system is linux and it is debian linux
+    """
+    if not platform.system().lower().startswith("linux") and os.path.exists(
+        os.path.join("/", "var", "lib", "dpkg")
+    ):
+        printf(
+            "System not Debian GNU/Linux or distribution of it!\
+Can't prroceed building of packages!",
+            level="f",
+            exception=definitions.PlatformNotSupportedError,
+        )
+
+
 # pylint: disable=[wrong-import-position]
 from . import control, definitions, files, build, version
