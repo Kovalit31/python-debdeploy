@@ -48,6 +48,7 @@ except ImportError:
 
 try:
     import apt_pkg
+
     try:
         apt_pkg.init()
         HAVE_APT_PKG = True
@@ -61,39 +62,45 @@ except ImportError:
 # Use the built-in _sha extension instead of hashlib to avoid a dependency on
 # OpenSSL, which is incompatible with the GPL.
 try:
-    import _sha1    # type: ignore
+    import _sha1  # type: ignore
+
     new_sha1 = _sha1.sha1
 except ImportError:
-    def new_sha1(*args): # pylint: disable=unused-argument
+
+    def new_sha1(*args):  # pylint: disable=unused-argument
         # type: (bytes) -> str
-        '''
+        """
         Defines a sha1 hash function, that does nothing
         because it depends on OpenSSL, which may not be linked with this library due to license
-        '''
+        """
         raise NotImplementedError(
             "Built-in sha1 implementation not found; cannot use hashlib"
             " implementation because it depends on OpenSSL, which"
             " may not be linked with this library due to license"
-            " incompatibilities")
+            " incompatibilities"
+        )
 
 
 # Use the built-in _sha256 extension instead of hashlib to avoid a dependency on
 # OpenSSL, which is incompatible with the GPL.
 try:
-    import _sha256    # type: ignore
+    import _sha256  # type: ignore
+
     new_sha256 = _sha256.sha256
 except ImportError:
-    def new_sha256(*args):    # pylint: disable=unused-argument
+
+    def new_sha256(*args):  # pylint: disable=unused-argument
         # type: (bytes) -> str
-        '''
+        """
         Defines a sha256 hash function, that does nothing
         because it depends on OpenSSL, which may not be linked with this library due to license
-        '''
+        """
         raise NotImplementedError(
             "Built-in sha1 implementation not found; cannot use hashlib"
             " implementation because it depends on OpenSSL, which"
             " may not be linked with this library due to license"
-            " incompatibilities")
+            " incompatibilities"
+        )
 
 
 class ParseError(Exception):
@@ -107,11 +114,12 @@ class ParseError(Exception):
 
     """
 
-    def __init__(self,
-                 filename,     # type: str
-                 lineno,       # type: int
-                 msg           # type: str
-                 ):
+    def __init__(
+        self,
+        filename,  # type: str
+        lineno,  # type: int
+        msg,  # type: str
+    ):
         # type: (...) -> None
         assert isinstance(lineno, int)
         self.filename = filename
@@ -153,10 +161,15 @@ class BaseVersion(object):
     re_valid_version = re.compile(
         r"^((?P<epoch>\d+):)?"
         "(?P<upstream_version>[A-Za-z0-9.+:~-]+?)"
-        "(-(?P<debian_revision>[A-Za-z0-9+.~]+))?$")
+        "(-(?P<debian_revision>[A-Za-z0-9+.~]+))?$"
+    )
     magic_attrs = (
-        'full_version', 'epoch', 'upstream_version',
-        'debian_revision', 'debian_version')
+        "full_version",
+        "epoch",
+        "upstream_version",
+        "debian_revision",
+        "debian_version",
+    )
 
     def __init__(self, version):
         # type: (Optional[Union[str, BaseVersion]]) -> None
@@ -206,12 +219,12 @@ class BaseVersion(object):
                 self._update_full_version()
                 raise ValueError(
                     f"Setting {attr} to {value} results in invalid version"
-                    ) from exc
+                ) from exc
 
     def __getattr__(self, attr):
         # type: (str) -> Optional[str]
         if attr not in self.magic_attrs:
-            return super(BaseVersion, self).__getattribute__(attr) # type: ignore
+            return super(BaseVersion, self).__getattribute__(attr)  # type: ignore
 
         # For compatibility with the old changelog.Version class
         if attr == "debian_version":
@@ -280,8 +293,9 @@ class AptPkgVersion(BaseVersion):
     def __init__(self, version):
         # type: (Optional[Union[str, BaseVersion]]) -> None
         if not HAVE_APT_PKG:
-            raise NotImplementedError("apt_pkg not available; install the "
-                                      "python-apt package")
+            raise NotImplementedError(
+                "apt_pkg not available; install the " "python-apt package"
+            )
         super(AptPkgVersion, self).__init__(version)
 
     def _compare(self, other):
@@ -314,9 +328,7 @@ class NativeVersion(BaseVersion):
             try:
                 other = BaseVersion(str(other))
             except ValueError as _e:
-                raise ValueError(
-                    f"Couldn't convert {other} to BaseVersion"
-                    ) from _e
+                raise ValueError(f"Couldn't convert {other} to BaseVersion") from _e
 
         lepoch = int(self.epoch or "0")
         repoch = int(other.epoch or "0")
@@ -324,18 +336,20 @@ class NativeVersion(BaseVersion):
             return -1
         if lepoch > repoch:
             return 1
-        res = self._version_cmp_part(self.upstream_version or "0",
-                                     other.upstream_version or "0")
+        res = self._version_cmp_part(
+            self.upstream_version or "0", other.upstream_version or "0"
+        )
         if res != 0:
             return res
-        return self._version_cmp_part(self.debian_revision or "0",
-                                      other.debian_revision or "0")
+        return self._version_cmp_part(
+            self.debian_revision or "0", other.debian_revision or "0"
+        )
 
     @classmethod
     def _order(cls, x):
         # type: (str) -> int
         """Return an integer value for character x"""
-        if x == '~':
+        if x == "~":
             return -1
         if cls.re_digit.match(x):
             return int(x) + 1
@@ -388,22 +402,25 @@ class NativeVersion(BaseVersion):
 
 
 if HAVE_APT_PKG:
+
     class Version(AptPkgVersion):
-        '''
+        """
         Version class that uses apt_pkg.VersionCompare to compare versions.
-        '''
+        """
+
 else:
-    class Version(NativeVersion):      # type: ignore
-        '''
+
+    class Version(NativeVersion):  # type: ignore
+        """
         Version class that uses NativeVersion to compare versions.
-        '''
+        """
 
 
 def version_compare(a, b) -> int:
     # type: (Any, Any) -> int
-    '''
+    """
     Compare two versions
-    '''
+    """
     va = Version(a)
     vb = Version(b)
     if va < vb:
@@ -419,14 +436,15 @@ class PackageFile:
     Objects of this class can be used to read Debian's Source and
     Packages files."""
 
-    re_field = re.compile(r'^([A-Za-z][A-Za-z0-9-_]+):(?:\s*(.*?))?\s*$')
-    re_continuation = re.compile(r'^\s+(?:\.|(\S.*?)\s*)$')
+    re_field = re.compile(r"^([A-Za-z][A-Za-z0-9-_]+):(?:\s*(.*?))?\s*$")
+    re_continuation = re.compile(r"^\s+(?:\.|(\S.*?)\s*)$")
 
-    def __init__(self,
-                 name,              # type: str
-                 file_obj=None,     # type: Optional[Union[TextIO, BinaryIO]]
-                 encoding="utf-8",  # type: str
-                 ):
+    def __init__(
+        self,
+        name,  # type: str
+        file_obj=None,  # type: Optional[Union[TextIO, BinaryIO]]
+        encoding="utf-8",  # type: str
+    ):
         # type: (...) -> None
         """Creates a new package file object.
 
@@ -435,7 +453,7 @@ class PackageFile:
                   file with the indicated name.
         """
         if file_obj is None:
-            file_obj = open(name, 'rb')  # pylint: disable=consider-using-with
+            file_obj = open(name, "rb")  # pylint: disable=consider-using-with
         self.name = name
         self.file = file_obj
         self.lineno = 0
@@ -445,11 +463,11 @@ class PackageFile:
         # type: () -> Generator[List[Tuple[str, str]], None, None]
         line = self._aux_read_line()
         self.lineno += 1
-        pkg = []   # type: List[Tuple[str, str]]
+        pkg = []  # type: List[Tuple[str, str]]
         while line:
-            if line.strip(' \t') == '\n':
+            if line.strip(" \t") == "\n":
                 if not pkg:
-                    self.raise_syntax_error('expected package record')
+                    self.raise_syntax_error("expected package record")
                 yield pkg
                 pkg = []
                 line = self._aux_read_line()
@@ -460,7 +478,7 @@ class PackageFile:
             if not match:
                 self.raise_syntax_error("expected package field")
             (name, contents) = match.groups()
-            contents = contents or ''
+            contents = contents or ""
 
             while True:
                 line = self._aux_read_line()
@@ -488,9 +506,9 @@ class PackageFile:
 
     def raise_syntax_error(self, msg, lineno=None):
         # type: (str, Optional[int]) -> NoReturn
-        '''
+        """
         Raises a ParseError with the given message.
-        '''
+        """
         if lineno is None:
             lineno = self.lineno
         raise ParseError(self.name, lineno, msg)
@@ -498,16 +516,18 @@ class PackageFile:
 
 class PseudoEnum:
     """A base class for types which resemble enumeration types."""
-    def __init__(self,
-                 name,     # type: str
-                 order,    # type: Any
-                 ):
+
+    def __init__(
+        self,
+        name,  # type: str
+        order,  # type: Any
+    ):
         self._name = name
         self._order = order
 
     def __repr__(self):
         # type: () -> str
-        return f'{self.__class__.__name__}({self._name})'
+        return f"{self.__class__.__name__}({self._name})"
 
     def __str__(self):
         # type: () -> str
@@ -552,13 +572,15 @@ class Release(PseudoEnum):
 
     See https://www.debian.org/releases/
     """
-    releases = {}    # type: Dict[str, Release]
 
-    def __init__(self,
-                 name,         # type: str
-                 order,        # type: Any
-                 version=""    # type: str
-                 ):
+    releases = {}  # type: Dict[str, Release]
+
+    def __init__(
+        self,
+        name,  # type: str
+        order,  # type: Any
+        version="",  # type: str
+    ):
         super(Release, self).__init__(name, order)
         self.version = version
 
@@ -566,29 +588,31 @@ class Release(PseudoEnum):
 def list_releases():
     # type: () -> Dict[str, Release]
     """
-     Returns dict of Debian releases
+    Returns dict of Debian releases
     """
     releases = {}
-    rels = (("buzz", "1.1"),
-            ("rex", "1.2"),
-            ("bo", "1.3"),
-            ("hamm", "2.0"),
-            ("slink", "2.1"),
-            ("potato", "2.2"),
-            ("woody", "3.0"),
-            ("sarge", "3.1"),
-            ("etch", "4.0"),
-            ("lenny", "5.0"),
-            ("squeeze", "6.0"),
-            ("wheezy", "7"),
-            ("jessie", "8"),
-            ("stretch", "9"),
-            ("buster", "10"),
-            ("bullseye", "11"),
-            ("bookworm", "12"),
-            ("trixie", "13"),
-            ("forky", "14"),
-            ("sid", ""))
+    rels = (
+        ("buzz", "1.1"),
+        ("rex", "1.2"),
+        ("bo", "1.3"),
+        ("hamm", "2.0"),
+        ("slink", "2.1"),
+        ("potato", "2.2"),
+        ("woody", "3.0"),
+        ("sarge", "3.1"),
+        ("etch", "4.0"),
+        ("lenny", "5.0"),
+        ("squeeze", "6.0"),
+        ("wheezy", "7"),
+        ("jessie", "8"),
+        ("stretch", "9"),
+        ("buster", "10"),
+        ("bullseye", "11"),
+        ("bookworm", "12"),
+        ("trixie", "13"),
+        ("forky", "14"),
+        ("sid", ""),
+    )
     for idx, rel in enumerate(rels):
         name, version = rel
         releases[name] = Release(name, idx, version)
@@ -601,9 +625,9 @@ _release_list = list_releases()
 
 def intern_release(name, releases=None) -> Release:
     # type: (str, Optional[Any]) -> Any
-    '''
+    """
     Get release for the given name.
-    '''
+    """
     if releases is None:
         releases = _release_list
     return releases.get(name)
@@ -620,7 +644,7 @@ def read_lines_sha256(lines):
             m.update(l)
         else:
             m.update(l.encode("UTF-8"))
-    return m.hexdigest()   # type: ignore
+    return m.hexdigest()  # type: ignore
 
 
 def read_lines_sha1(lines):
@@ -631,18 +655,18 @@ def read_lines_sha1(lines):
             m.update(l)
         else:
             m.update(l.encode("UTF-8"))
-    return m.hexdigest()   # type: ignore
+    return m.hexdigest()  # type: ignore
 
 
-_patch_re_raw = r'^(\d+)(?:,(\d+))?([acd])$'
+_patch_re_raw = r"^(\d+)(?:,(\d+))?([acd])$"
 _patch_re = re.compile(_patch_re_raw)  # type: Pattern[str]
-_patch_re_b = re.compile(_patch_re_raw.encode('UTF-8'))   # type: Pattern[bytes]
+_patch_re_b = re.compile(_patch_re_raw.encode("UTF-8"))  # type: Pattern[bytes]
 
 
 def patches_from_ed_script(
-        source,       # type: Iterable[AnyStr]
-        re_cmd=None,  # type: Optional[Pattern[AnyStr]]
-    ):
+    source,  # type: Iterable[AnyStr]
+    re_cmd=None,  # type: Optional[Pattern[AnyStr]]
+):
     # type: (...) -> Iterator[Tuple[int, int, List[AnyStr]]]
     """Converts source to a stream of patches.
 
@@ -673,48 +697,48 @@ def patches_from_ed_script(
         last = None if last_ is None else int(last_)
 
         # using ord() makes this work for str and bytes objects
-        if ord(cmd) == 100: # cmd == d
+        if ord(cmd) == 100:  # cmd == d
             first = first - 1
             if last is None:
                 last = first + 1
             yield (first, last, [])
             continue
 
-        if ord(cmd) == 97: # cmd == a
+        if ord(cmd) == 97:  # cmd == a
             if last is not None:
                 raise ValueError("invalid patch argument: %r" % line)
             last = first
-        else:                           # cmd == c
+        else:  # cmd == c
             first = first - 1
             if last is None:
                 last = first + 1
 
         lines = []
         for c in i:
-            if c in ('', b''):
+            if c in ("", b""):
                 raise ValueError("end of stream in command: %r" % line)
-            if c in ('.\n', '.', b'.\n', b'.'):
+            if c in (".\n", ".", b".\n", b"."):
                 break
             lines.append(c)
         yield (first, last, lines)
 
 
 def patch_lines(
-        lines,        # type: List[AnyStr]
-        patches,      # type: Iterable[Tuple[int, int, List[AnyStr]]]
-    ):
+    lines,  # type: List[AnyStr]
+    patches,  # type: Iterable[Tuple[int, int, List[AnyStr]]]
+):
     # type: (...) -> None
     """Applies patches to lines.  Updates lines in place."""
-    for (first, last, args) in patches:
+    for first, last, args in patches:
         lines[first:last] = args
 
 
 def replace_file(lines, local, encoding="UTF-8"):
     # type: (List[str], str, str) -> None
-    local_new = local + '.new'
+    local_new = local + ".new"
 
     try:
-        with open(local_new, 'w+', encoding=encoding) as new_file:
+        with open(local_new, "w+", encoding=encoding) as new_file:
             for l in lines:
                 new_file.write(l)
         os.replace(local_new, local)
@@ -734,7 +758,7 @@ def download_gunzip_lines(remote):
 
     with urlopen(remote) as zfd:
         with gzip.open(zfd, mode="rt") as gfd:
-            return gfd.readlines()   # type: ignore
+            return gfd.readlines()  # type: ignore
 
 
 def download_file(remote, local):
@@ -745,7 +769,7 @@ def download_file(remote, local):
     local - name of the local file
     """
 
-    lines = download_gunzip_lines(remote + '.gz')
+    lines = download_gunzip_lines(remote + ".gz")
     replace_file(lines, local)
     return lines
 
@@ -758,22 +782,22 @@ def update_file(remote, local, verbose=False):
     """
 
     try:
-        with open(local, 'r', encoding="UTF-8") as local_file:
+        with open(local, "r", encoding="UTF-8") as local_file:
             lines = local_file.readlines()
     except IOError:
         if verbose:
             print("update_file: no local copy, downloading full file")
         return download_file(remote, local)
 
-    patches_to_apply = []    # type: List[str]
-    patch_hashes = {}        # type: Dict[str, str]
+    patches_to_apply = []  # type: List[str]
+    patch_hashes = {}  # type: Dict[str, str]
 
     # pylint: disable=import-outside-toplevel
     from urllib.request import urlopen
 
-    index_name = remote + '.diff/Index'
+    index_name = remote + ".diff/Index"
 
-    re_whitespace = re.compile(r'\s+')
+    re_whitespace = re.compile(r"\s+")
 
     try:
         with urlopen(index_name) as index_url:
@@ -789,22 +813,22 @@ def update_file(remote, local, verbose=False):
             print("update_file: could not download patch index file")
         return download_file(remote, local)
 
-    if 'SHA256-Current' in [k for fields in index_fields for k,v in fields]:
+    if "SHA256-Current" in [k for fields in index_fields for k, v in fields]:
         if verbose:
             print("update_file: using sha256")
-        prefix = 'SHA256'
+        prefix = "SHA256"
         local_hash = read_lines_sha256(lines)
         read_lines = read_lines_sha256
     else:
         if verbose:
             print("update_file: using sha1")
-        prefix = 'SHA1'
+        prefix = "SHA1"
         local_hash = read_lines_sha1(lines)
         read_lines = read_lines_sha1
 
     for fields in index_fields:
-        for (field, value) in fields:
-            if field == prefix+'-Current':
+        for field, value in fields:
+            if field == prefix + "-Current":
                 (remote_hash, _) = re_whitespace.split(value)
                 if local_hash == remote_hash:
                     if verbose:
@@ -812,9 +836,9 @@ def update_file(remote, local, verbose=False):
                     return lines
                 continue
 
-            if field == prefix+'-History':
+            if field == prefix + "-History":
                 for entry in value.splitlines():
-                    if entry == '':
+                    if entry == "":
                         continue
                     (hist_hash, _, patch_name) = re_whitespace.split(entry)
 
@@ -825,9 +849,9 @@ def update_file(remote, local, verbose=False):
 
                 continue
 
-            if field == prefix+'-Patches':
+            if field == prefix + "-Patches":
                 for entry in value.splitlines():
-                    if entry == '':
+                    if entry == "":
                         continue
                     (patch_hash, _, patch_name) = re_whitespace.split(entry)
                     patch_hashes[patch_name] = patch_hash
@@ -844,8 +868,7 @@ def update_file(remote, local, verbose=False):
     for patch_name in patches_to_apply:
         if verbose:
             print("update_file: downloading patch %r" % patch_name)
-        patch_contents = download_gunzip_lines(
-            remote + '.diff/' + patch_name + '.gz')
+        patch_contents = download_gunzip_lines(remote + ".diff/" + patch_name + ".gz")
         if read_lines(patch_contents) != patch_hashes[patch_name]:
             raise ValueError("patch %r was garbled" % patch_name)
         patch_contents_unicode = list(patch_contents)
@@ -853,14 +876,13 @@ def update_file(remote, local, verbose=False):
 
     new_hash = read_lines(lines)
     if new_hash != remote_hash:
-        raise ValueError("patch failed, got %s instead of %s"
-                         % (new_hash, remote_hash))
+        raise ValueError("patch failed, got %s instead of %s" % (new_hash, remote_hash))
 
     replace_file(lines, local)
     return lines
 
 
-def merge_as_sets(*args):           # type: ignore
+def merge_as_sets(*args):  # type: ignore
     """Create an order set (represented as a list) of the objects in
     the sequences passed as arguments."""
     s = {}

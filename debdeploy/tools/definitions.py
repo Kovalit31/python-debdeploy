@@ -1,4 +1,4 @@
-'''
+"""
 
     debdeploy - Build dpkg package and it dependencies from dpkg cache
     Copyright (C) 2023 Kovalit31
@@ -14,7 +14,7 @@
     GNU General Public License for more details.
 
 Definitions of module
-'''
+"""
 
 import os
 
@@ -34,17 +34,22 @@ SCRIPTS = "^(post|pre)(rm|inst)$"
 #   Exceptions
 # ===============
 
+
 # pylint: disable=[missing-class-docstring]
 class PackageNotFoundError(Exception):
     pass
 
+
 class NotSupportedSystemError(Exception):
     pass
+
 
 class PackageBuildError(Exception):
     pass
 
+
 class NoPackageModifierError(Exception):
     pass
+
 
 # pylint: enable=[missing-class-docstring]

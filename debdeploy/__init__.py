@@ -1,4 +1,4 @@
-'''
+"""
 
     debdeploy - Build dpkg package and it dependencies from dpkg cache
     Copyright (C) 2023 Kovalit31
@@ -15,7 +15,7 @@
 
 Root module of debeploy
 DON'T USE TEST DIRECTORY!
-'''
+"""
 
 import argparse
 import os
@@ -24,96 +24,85 @@ from . import tools
 
 __version__ = "1.2.0b1"
 
+
 def parse() -> argparse.Namespace:
-    '''
+    """
     Parses args
-    '''
+    """
 
     uuid = tools.gen_uuid()
     parser = argparse.ArgumentParser(
-        description=\
-f'''Debian package builder and deployer from dpkg cache
+        description=f"""Debian package builder and deployer from dpkg cache
 
     debdeploy version {__version__}, Copyright (C) 2023 Kovalit31
     debdeploy comes with ABSOLUTELY NO WARRANTY.
     This is free software, and you are welcome to redistribute it
     under certain conditions.
 
-''',
+""",
         prog="debdeploy",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        )
+    )
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Switch to debug mode",
-        default=False
-        )
+        "--debug", "-d", action="store_true", help="Switch to debug mode", default=False
+    )
     parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Be verbose",
-        default=False
+        "--verbose", "-v", action="store_true", help="Be verbose", default=False
     )
     parser.add_argument(
         "packages",
         nargs="+",
         help="List of packages to build",
         metavar="PACKAGE",
-        )
+    )
     parser.add_argument(
         "--destination",
-        "-d",
-        default=tools.definitions.DEBDEPLOY_WORKDIR.format(
-            uuid=uuid
-            ),
-        help="Folder for saving builded packages"
+        "-D",
+        default=tools.definitions.DEBDEPLOY_WORKDIR.format(uuid=uuid),
+        help="Folder for saving builded packages",
     )
     parser.add_argument(
         "--cache",
-        "-c",
+        "-C",
         help="Cache directory",
-        default=tools.definitions.DEBDEPLOY_CACHE_WORKDIR.format(
-            uuid=uuid
-            )
+        default=tools.definitions.DEBDEPLOY_CACHE_WORKDIR.format(uuid=uuid),
     )
     parser.add_argument(
         "--no-superuser",
+        "-S",
         action="store_true",
         help="Run without root permission (for overriding). \n\
     Caution: it can be broke resulting package!",
-        default=False
+        default=False,
     )
     parser.add_argument(
-        '-f',
-        '--force',
+        "-f",
+        "--force",
         help="Forces build of packages (either it was broken)",
         default=False,
-        action="store_true"
+        action="store_true",
     )
-    parser.add_argument(
-        "--arch",
-        help="Default arch",
-        default=tools.get_arch()
-    )
+    parser.add_argument("--arch", help="Default arch", default=tools.get_arch())
     parser.add_argument(
         "--dependencies",
+        "-E",
         help="Build with dependencies",
         action="store_true",
-        default=False
+        default=False,
     )
     return parser.parse_args()
 
+
 def main(args: argparse.Namespace = None):
-    '''
+    """
     Main function of programm
-    '''
+    """
     args = args if args is not None else parse()
     tools.check_sudo(args.no_superuser)
     package_enum = {
         "packages": tools.control.parse_packages(", ".join(args.packages)),
         "builded": [],
-        "ignore": 0
+        "ignore": 0,
     }
     while len(package_enum["packages"]) > 0:
         cur_package: list[tools.control.Package] = package_enum["packages"][0]
@@ -124,19 +113,15 @@ def main(args: argparse.Namespace = None):
             package_enum["packages"] = cur_package + package_enum["packages"][1:]
             continue
         all_controls = tools.control.get_controls(cur_package.name)
-        cur_control = get_current_control(all_controls,
-                                           cur_package,
-                                           need_ignore=package_enum["ignore"] > 0
-                                           )
+        cur_control = get_current_control(
+            all_controls, cur_package, need_ignore=package_enum["ignore"] > 0
+        )
         if cur_control is None:
             package_enum["ignore"] -= 1
             package_enum["packages"].pop(0)
             continue
         if args.debug:
-            tools.printf(
-                f"{cur_control.__debug_info__()}",
-                level='d'
-            )
+            tools.printf(f"{cur_control.__debug_info__()}", level="d")
         _package = tools.control.parse_packages(f"{str(cur_control.package)}")[0]
         tools.printf(f"Got package '{_package}'")
         if is_package_builded(package_enum["builded"], _package):
@@ -152,16 +137,16 @@ def main(args: argparse.Namespace = None):
             tools.printf(
                 f"Dumping info:\nCurrent package: {cur_package}\nGot package: {_package}\n\
 Is Correct: {correct}",
-                level='d',
-                check=(not args.debug)
+                level="d",
+                check=(not args.debug),
             )
             tools.printf(
                 "It can't be satishfy dependencies, may be broke or \
 not sucessful previous installation of package!",
-                level='f',
+                level="f",
                 exception=tools.definitions.PackageNotFoundError,
-                check=(args.force or package_enum["ignore"] > 0)
-                )
+                check=(args.force or package_enum["ignore"] > 0),
+            )
             if package_enum["ignore"] > 0:
                 package_enum["ignore"] -= 1
             package_enum["packages"].pop(0)
@@ -177,27 +162,24 @@ not sucessful previous installation of package!",
         package_enum["packages"].pop(0)
         if args.dependencies:
             package_enum["packages"].extend(
-                cur_control.section_package_list(
-                    "depends"
-                    ) + cur_control.section_package_list(
-                        "pre-depends"
-                        )
-                )
+                cur_control.section_package_list("depends")
+                + cur_control.section_package_list("pre-depends")
+            )
         package_enum["builded"].append(_package)
 
-def get_current_control(all_controls: list[tools.control.Control],
-                         package_name: str,
-                         need_ignore=False
-                         ) -> tools.control.Control:
-    '''
+
+def get_current_control(
+    all_controls: list[tools.control.Control], package_name: str, need_ignore=False
+) -> tools.control.Control:
+    """
     Get current control from all_controls by arch
-    '''
+    """
     if len(all_controls) == 0:
         tools.printf(
             f"I don't know, what you want to build instead '{package_name}'...",
-            level='f',
+            level="f",
             exception=tools.definitions.PackageNotFoundError,
-            check=need_ignore
+            check=need_ignore,
         )
         return None
     for cur_control in all_controls:
@@ -206,43 +188,45 @@ def get_current_control(all_controls: list[tools.control.Control],
     else:
         tools.printf(
             f"Can't guess control file from '{all_controls}'!",
-            level='f',
+            level="f",
             exception=NotImplementedError,
-            check=need_ignore
+            check=need_ignore,
         )
         return None
     return cur_control
 
+
 def build_driver(
-        package: tools.control.Package,
-        control: tools.control.Control,
-        cache: str,
-        destination: str
-        ) -> None:
-    '''
+    package: tools.control.Package,
+    control: tools.control.Control,
+    cache: str,
+    destination: str,
+) -> None:
+    """
     Set up and build package
-    '''
+    """
     tools.printf(f"Coping files for '{package}'...")
     package_files = tools.files.get_files(package)
     tools.files.create_dirs(package, cache, destination)
     tools.files.copy_files_to_target(package_files, os.path.join(cache, package.name))
     control_file = os.path.join(cache, package.name, "DEBIAN", "control")
-    with open(control_file, 'w', encoding="utf-8") as _f:
+    with open(control_file, "w", encoding="utf-8") as _f:
         _f.write("".join(control.original))
     os.chmod(control_file, 0o0644)
     tools.build.build(package, cache, destination)
 
+
 def is_package_builded(
-        builded_list: list[tools.control.Package],
-        package: tools.control.Package
-        ) -> bool:
-    '''
+    builded_list: list[tools.control.Package], package: tools.control.Package
+) -> bool:
+    """
     Checks if package is builded
-    '''
+    """
     for _x in builded_list:
         if _x == package:
             return True
     return False
+
 
 # pylint: disable=[wrong-import-position]
 from . import tests

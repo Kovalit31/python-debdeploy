@@ -1,4 +1,4 @@
-'''
+"""
 
     debdeploy - Build dpkg package and it dependencies from dpkg cache
     Copyright (C) 2023 Kovalit31
@@ -14,7 +14,7 @@
     GNU General Public License for more details.
 
 Main executable of debdeploy package
-'''
+"""
 
 from . import main, parse
 

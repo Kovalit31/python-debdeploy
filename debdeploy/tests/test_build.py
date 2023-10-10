@@ -1,4 +1,4 @@
-'''
+"""
 
     debdeploy - Build dpkg package and it dependencies from dpkg cache
     Copyright (C) 2023 Kovalit31
@@ -14,7 +14,7 @@
     GNU General Public License for more details.
 
 Test debdeploy.tools.build
-'''
+"""
 import os
 import shutil
 
@@ -25,10 +25,11 @@ from ..tools import gen_uuid
 DIRNAME = os.path.dirname(__file__)
 PACKAGE = os.path.join(DIRNAME, "example")
 
+
 def test_build():
-    '''
+    """
     Test build function
-    '''
+    """
     uuid = gen_uuid()
     base = os.path.join("/", "tmp", f"test-{uuid}")
     cache = os.path.join(base, "cache")
@@ -38,10 +39,11 @@ def test_build():
     shutil.copytree(PACKAGE, os.path.join(cache, "example"))
     build.build(control.Package("example"), cache, destination)
 
+
 def test_execute():
-    '''
+    """
     Test execute function
-    '''
+    """
     code = build.execute("echo Hello!")
     assert code == 0, "You have incorrectly configured system!"
     code = build.execute(gen_uuid(length=50))

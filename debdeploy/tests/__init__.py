@@ -1,4 +1,4 @@
-'''
+"""
 
     debdeploy - Build dpkg package and it dependencies from dpkg cache
     Copyright (C) 2023 Kovalit31
@@ -14,7 +14,7 @@
     GNU General Public License for more details.
 
 Test workspace
-'''
+"""
 
 from . import test_main
 
