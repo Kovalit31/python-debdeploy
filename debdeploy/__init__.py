@@ -22,7 +22,7 @@ import os
 
 from . import tools
 
-__version__ = "1.2.0b1"
+__version__ = "1.2.1"
 
 
 def parse() -> argparse.Namespace:

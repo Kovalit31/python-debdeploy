@@ -92,7 +92,7 @@ def get_arch() -> str:
         "x86_64/amd64",
         "s390x/s390x",
         "aarch64.*/arm64",
-    ]  # Predefined
+    ]  # Predefined # TODO Add more arch
     arch = platform.machine()
     for _x in _a_re:
         pattern, repl = _x.split("/")
