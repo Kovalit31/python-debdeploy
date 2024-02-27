@@ -114,10 +114,15 @@ def main(args: argparse.Namespace = None):
             continue
         all_controls = tools.control.get_controls(cur_package.name)
         cur_control = get_current_control(
-            all_controls, cur_package, need_ignore=package_enum["ignore"] > 0
+            all_controls, cur_package, need_ignore=(args.force or package_enum["ignore"] > 0)
         )
-        if cur_control is None:
-            package_enum["ignore"] -= 1
+        if cur_control is None and (args.force or package_enum["ignore"] > 0):
+            tools.printf(
+                "No control provided, but we have force flag, so we continue",
+                level='w'
+                    )
+            if package_enum["ignore"] > 0:
+                package_enum["ignore"] -= 1
             package_enum["packages"].pop(0)
             continue
         if args.debug:
