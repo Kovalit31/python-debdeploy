@@ -32,7 +32,7 @@ def build(package: control.Package, cache_dir: str, dest_dir: str) -> None:
         tools.printf(f"Directory is not a directory: '{dest_dir}'!")
     tools.printf(f"Building package {str(package)}")
     _code = execute(
-        f"sudo dpkg-deb -Sextreme -b {os.path.join(cache_dir, package.name)} \
+        f"dpkg-deb -Sextreme -b {os.path.join(cache_dir, package.name)} \
 {os.path.join(dest_dir, f'{package.name}_{package.version}_{package.arch}.deb')}"
     )
     if _code == 0:

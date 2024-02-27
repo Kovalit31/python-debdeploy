@@ -22,7 +22,7 @@ from debdeploy.tools import definitions, control, normalize_re
 from debdeploy import tools
 
 
-def get_files(package: control.Package, default_arch=None) -> list[str]:
+def get_files(package: control.Package, default_arch=tools.get_arch()) -> list[str]:
     """
     Get files from dpkg cache, what stores info about package
     """
@@ -60,7 +60,7 @@ def get_files(package: control.Package, default_arch=None) -> list[str]:
             exception=definitions.PackageNotFoundError,
         )
     if len(package_files) > 1:
-        if default_arch is None or default_arch not in package_files:
+        if default_arch not in package_files:
             tools.printf(
                 f"Can't guess default arch to build from '{archs}'!",
                 level="f",
@@ -110,6 +110,8 @@ def copy_files_to_target(files: list[str], target: str) -> None:
             tools.force_makedirs(destination)
             shutil.copystat(file.strip(), destination)
             continue
+        if os.path.islink(file):
+            print(f"{file} is link")
         shutil.copy2(file.strip(), destination)
     os.remove(package_list)
     to_chmod = []
